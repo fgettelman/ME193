@@ -15,13 +15,25 @@ import cv2
 
 
 def list_cameras():
-    """[(index, name)] of the video devices, in the order OpenCV indexes them."""
+    """[(index, name)] of the video devices, in the order OpenCV indexes them.
+
+    The sort matters: OpenCV's AVFoundation backend takes the same device
+    list macOS hands us, then sorts it by uniqueID before indexing (it wants
+    an order that doesn't shuffle between runs). AVFoundation's own order is
+    built-in camera first, so on this Mac the two disagree -- the iPhone's
+    uniqueID sorts ahead of the FaceTime HD camera's, putting the phone at
+    OpenCV index 0 while AVFoundation lists it second. Enumerating in
+    AVFoundation's order here would hand back an index that opens the other
+    camera, which is exactly the silent wrong-camera bug this module exists
+    to prevent.
+    """
     try:
         import AVFoundation as AV
     except ImportError:
         return []
 
     devices = AV.AVCaptureDevice.devicesWithMediaType_(AV.AVMediaTypeVideo) or []
+    devices = sorted(devices, key=lambda d: d.uniqueID())
     return [(i, d.localizedName()) for i, d in enumerate(devices)]
 
 
