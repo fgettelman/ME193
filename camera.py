@@ -45,6 +45,49 @@ def find_index(name_fragment):
     return None
 
 
+# Name fragments for the two cameras the scripts offer a choice between.
+PHONE_NAME = 'iPhone'
+LAPTOP_NAME = 'FaceTime'
+
+
+def ask_for_camera(default='phone'):
+    """Ask at the terminal which camera to use; return a name fragment.
+
+    The answer goes straight to `open_camera(prefer=...)`, so the choice is
+    still resolved by name -- this only decides *which* name to look for.
+    Pressing Enter takes `default`. If nothing is on stdin (piped input, an
+    IDE's run button with no console) it falls back to `default` rather than
+    hanging on a prompt nobody can answer.
+    """
+    cameras = list_cameras()
+    if not cameras:
+        print('Warning: camera names unavailable (pip install '
+              'pyobjc-framework-AVFoundation), so this choice cannot be '
+              'resolved by name. Set CAMERA_INDEX instead.')
+
+    def label(fragment):
+        return next((n for _, n in cameras if fragment.lower() in n.lower()),
+                    'not detected')
+
+    default_key = '1' if default == 'phone' else '2'
+    print('\nWhich camera should this use?')
+    print(f'  1) phone  -- {label(PHONE_NAME)}')
+    print(f'  2) laptop -- {label(LAPTOP_NAME)}')
+
+    while True:
+        try:
+            answer = input(f'Choose 1 or 2 [{default_key}]: ').strip().lower()
+        except EOFError:
+            print(f'(nothing on stdin -- using the default: {default})')
+            answer = ''
+        answer = answer or default_key
+        if answer in ('1', 'p', 'phone', 'iphone'):
+            return PHONE_NAME
+        if answer in ('2', 'l', 'laptop', 'mac', 'webcam', 'built-in'):
+            return LAPTOP_NAME
+        print('Please answer 1 (phone) or 2 (laptop).')
+
+
 def open_camera(prefer='iPhone', index=None, width=None, height=None,
                 required=False):
     """Open a camera and return the cv2.VideoCapture.
@@ -53,8 +96,9 @@ def open_camera(prefer='iPhone', index=None, width=None, height=None,
     name contains `prefer` is used, falling back to index 0.
 
     Pass `required=True` when the wrong camera is worse than no camera --
-    e.g. the tracker, where falling back to the Mac's built-in webcam means
-    driving the car off a view it isn't mounted on. It raises instead.
+    e.g. the tracker, where silently opening some other camera than the one
+    asked for means driving the car off a view it isn't mounted on. It
+    raises instead of falling back.
 
     Raises RuntimeError with the available cameras listed if it can't open.
     """

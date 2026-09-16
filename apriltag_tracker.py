@@ -17,22 +17,25 @@ Before the first run:
   3. python iphone_video.py               (confirm the feed looks right)
 The phone-side checklist lives at the top of iphone_video.py.
 
-This script will not silently fall back to the Mac's built-in webcam --
-that camera isn't on the car, so its view would steer the car nowhere.
-If the phone isn't found it stops and tells you.
+On startup it asks which camera to watch -- the phone on the car, or the
+laptop's built-in one. It never picks for you: whichever you choose is the
+one it opens, and if that camera isn't there it stops and tells you rather
+than quietly using the other. (The laptop camera isn't on the car, so it
+steers the car nowhere -- useful for checking detection, not for driving.)
 
 Run:
     python apriltag_tracker.py
 Press 'q' in the video window to stop.
 """
 
+import atexit
 import time
 
 import cv2
 import legoeducation as le
 from pupil_apriltags import Detector
 
-from camera import open_camera
+from camera import ask_for_camera, open_camera
 
 # ---------------------------------------------------------------------------
 # Configuration - edit these for your hardware / setup
@@ -42,18 +45,24 @@ from camera import open_camera
 CARD_COLOR = le.LEGO_COLOR_BLUE  # Change to your card's color
 CARD_SERIAL = '3685'              # Change to your card's 4-digit serial number
 
-# Which camera to use. CAMERA_NAME is matched against the camera names macOS
-# reports (run list_cameras.py to see them), so the phone is found no matter
-# what index it lands on -- and the index does move around depending on whether
-# the phone was connected when the script started.
+# Ask at startup whether to use the phone or the laptop camera. Set False to
+# skip the question and go straight to CAMERA_NAME. The question is skipped
+# either way when CAMERA_INDEX pins a specific camera.
+ASK_FOR_CAMERA = True
+
+# Which camera to use when the startup question is skipped. CAMERA_NAME is
+# matched against the camera names macOS reports (run list_cameras.py to see
+# them), so the phone is found no matter what index it lands on -- and the index
+# does move around depending on whether the phone was connected when the script
+# started. 'iPhone' is the phone; 'FaceTime' is the laptop's built-in camera.
 # Set CAMERA_INDEX to a number to override the name match entirely.
 CAMERA_NAME = 'iPhone'
 CAMERA_INDEX = None
 
-# Require CAMERA_NAME to actually be there. The car steers by what the on-board
-# camera sees, so quietly falling back to the Mac's built-in webcam would drive
-# the car off a view bolted to the desk. Set False only if you're deliberately
-# testing with the built-in camera (also set CAMERA_NAME = 'FaceTime').
+# Require the chosen camera to actually be there. The car steers by what the
+# camera sees, so opening a different camera than the one you asked for would
+# drive it off the wrong view. Set False only if you want the old behavior of
+# falling back to index 0 when the name doesn't match.
 REQUIRE_NAMED_CAMERA = True
 
 # Optional capture resolution. None keeps the camera's default -- the iPhone
@@ -136,7 +145,38 @@ def clamp(value, lo, hi):
     return max(lo, min(hi, value))
 
 
+def release_motor(doublemotor):
+    """Shut the LEGO library's BLE transport down while Python can still do it.
+
+    legoeducation registers an atexit handler to close its transport, but
+    closing needs the library's background event-loop thread -- and by the time
+    atexit runs, Python 3.12 refuses to start new threads. The handler dies
+    with "RuntimeError: can't create new thread at interpreter shutdown" and
+    leaves a "coroutine 'TransportManager.close' was never awaited" warning.
+    Nothing is actually broken (the motors are already stopped and the hub
+    disconnected by then), but the traceback prints over whatever this script
+    last said, which reads like a crash. Running that same shutdown here, while
+    the interpreter is alive, and unregistering the handler so it can't run a
+    second time, keeps the exit quiet.
+    """
+    shutdown = getattr(doublemotor, '_shutdown', None)
+    if shutdown is None:
+        return  # library internals changed; leave its own atexit handler to it
+    try:
+        atexit.unregister(shutdown)
+        shutdown()
+    except Exception as exc:  # cleanup must never mask the real exit path
+        print(f"(ignored while closing the LEGO connection: {exc})")
+
+
 def main():
+    # --- Pick the camera --------------------------------------------------
+    # Asked before the motor connects, so backing out here leaves no hub
+    # connection dangling.
+    camera_name = CAMERA_NAME
+    if ASK_FOR_CAMERA and CAMERA_INDEX is None:
+        camera_name = ask_for_camera(default='phone')
+
     # --- Connect to the Double Motor -------------------------------------
     doublemotor = le.DoubleMotor()
     print("Connecting to the double motor...")
@@ -144,6 +184,7 @@ def main():
 
     if not doublemotor.connected:
         print("Error connecting to Double Motor. Make sure it is turned on!")
+        release_motor(doublemotor)
         return
 
     print("Connected successfully!")
@@ -151,7 +192,7 @@ def main():
     # --- Set up the camera and AprilTag detector --------------------------
     try:
         cap = open_camera(
-            prefer=CAMERA_NAME,
+            prefer=camera_name,
             index=CAMERA_INDEX,
             width=CAMERA_WIDTH,
             height=CAMERA_HEIGHT,
@@ -160,6 +201,7 @@ def main():
     except RuntimeError as exc:
         print(f"Error: {exc}")
         doublemotor.disconnect()
+        release_motor(doublemotor)
         return
 
     detector = Detector(families=TAG_FAMILY)
@@ -354,6 +396,7 @@ def main():
         print("Stopping motors and disconnecting.")
         doublemotor.motor_stop(motor=le.MOTOR_BOTH)
         doublemotor.disconnect()
+        release_motor(doublemotor)
         cap.release()
         cv2.destroyAllWindows()
         print("Done!")
