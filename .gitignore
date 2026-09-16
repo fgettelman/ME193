@@ -1,3 +1,5 @@
 my_env_ME193/
 __pycache__/
 *.pyc
+.venv/
+venv/
