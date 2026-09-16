@@ -118,6 +118,13 @@ PULSE_OFF_TIME = 0.15  # seconds to coast/settle and get a fresh camera reading 
 # can't brake in time, which is the main cause of overshoot on long approaches.
 SLEW_RATE = 250.0  # percent-speed per second
 
+# Debug overlay: box drawn around the detected tag, and the on-screen readout of
+# the tag's center in pixels. OpenCV colors are BGR, so this is red. Bump
+# COORD_TEXT_SCALE if you're reading the window from further away.
+BOX_COLOR = (0, 0, 255)
+COORD_TEXT_SCALE = 1.2
+COORD_TEXT_THICKNESS = 3
+
 # If the car turns the wrong way to re-center the tag, flip this to True.
 # False is correct for the camera-on-car setup above (tag drifts right in
 # frame -> car turns right to face it). A rig with the camera off the car
@@ -292,11 +299,24 @@ def main():
                 )
 
                 # --- Debug overlay ---
-                # Red dot = tag center; turns green once it lands on the blue center line.
+                # Red box around the tag; red dot = tag center, which turns green
+                # once it lands on the blue center line.
                 dot_color = (0, 255, 0) if centered else (0, 0, 255)
                 for pt_a, pt_b in zip(tag.corners, tag.corners[[1, 2, 3, 0]]):
-                    cv2.line(frame, tuple(pt_a.astype(int)), tuple(pt_b.astype(int)), (0, 255, 0), 2)
+                    cv2.line(frame, tuple(pt_a.astype(int)), tuple(pt_b.astype(int)), BOX_COLOR, 2)
                 cv2.circle(frame, (int(tag_center_x), int(tag.center[1])), 5, dot_color, -1)
+
+                # Tag center in pixels, big enough to read from across the room.
+                # Drawn just above the tag, nudged back inside the frame when the
+                # tag is near an edge so the text never runs off screen.
+                coords = f"({tag_center_x:.0f}, {tag.center[1]:.0f})"
+                (text_w, text_h), _ = cv2.getTextSize(
+                    coords, cv2.FONT_HERSHEY_SIMPLEX, COORD_TEXT_SCALE, COORD_TEXT_THICKNESS)
+                text_x = clamp(int(tag_center_x - text_w / 2), 5, max(5, frame_width - text_w - 5))
+                text_y = clamp(int(tag.center[1]) - 20, text_h + 5, frame_height - 5)
+                cv2.putText(frame, coords, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
+                            COORD_TEXT_SCALE, BOX_COLOR, COORD_TEXT_THICKNESS)
+
                 if centered:
                     status = "CENTERED"
                 elif abs(error) < FINE_ZONE:
