@@ -1,0 +1,22 @@
+# ME193 -- Python dependencies for the LEGO + camera scripts.
+#
+# Install into a virtual environment (see README.md):
+#     python3.12 -m venv my_env_ME193
+#     source my_env_ME193/bin/activate
+#     pip install -r requirements.txt
+#
+# macOS only: pyobjc is what lets us name cameras and talk to Bluetooth.
+
+# Bluetooth control of the LEGO Education SPIKE hubs (SingleMotor / DoubleMotor).
+# Pulls in `bleak` for the actual BLE transport.
+legoeducation==1.1.1
+
+# Camera capture + the video window (cv2). Brings numpy with it.
+opencv-python==5.0.0.93
+
+# AprilTag detection used by apriltag_tracker.py.
+pupil-apriltags==1.0.4.post11
+
+# Gives list_cameras.py the real device names ("Zachary's iPhone") instead of
+# bare indices. Without it the scripts still run, you just lose the labels.
+pyobjc-framework-AVFoundation==12.2.2
