@@ -51,7 +51,7 @@ the phone is stationary.
 | `iphone_video.py` | Opens the iPhone feed and shows it live. Sanity check before tracking. Press `q` to quit. |
 | `enable_continuity_camera.py` | One-time interpreter patch described above. |
 | `test.py` | Minimal SingleMotor check — connects, spins 3 s, stops. |
-| `apriltag_tracker.py` | The real one: watches an AprilTag and steers a DoubleMotor car to center it. Press `q` to stop. |
+| `apriltag_tracker.py` | The real one: steers a DoubleMotor car off the on-board iPhone feed to aim it at an AprilTag. Press `q` to stop. |
 
 ### Before you run the motor scripts
 
@@ -60,14 +60,20 @@ Card — `CARD_COLOR` / `card_color` and `CARD_SERIAL` / `card_serial` (the
 4-digit number). Turn the hub on first; the scripts exit if they cannot
 connect.
 
-For `apriltag_tracker.py` also check `CAMERA_NAME` — it is matched against the
-names `list_cameras.py` prints, so `'iPhone'` finds the phone whatever index it
-lands on, and `'FaceTime'` picks the built-in webcam. Set `CAMERA_INDEX` to a
-number only if you want to override the name match. Make sure the tag on the
-car is from the `TAG_FAMILY` family (`tag36h11` by default).
+`apriltag_tracker.py` drives off the iPhone riding on the car — the same feed
+`iphone_video.py` shows. `CAMERA_NAME` (`'iPhone'`) is matched against the names
+`list_cameras.py` prints, so the phone is found whatever index it lands on;
+that matters because the index shifts depending on whether the phone was
+connected when the script started.
 
-Selecting by name matters because the iPhone's index shifts depending on
-whether it is connected when the script starts.
+It will not fall back to the Mac's built-in webcam. That camera is bolted to
+the desk, not the car, so steering by it would be meaningless — if the phone
+isn't found the script stops and says so. To deliberately test with the
+built-in camera, set `CAMERA_NAME = 'FaceTime'` and `REQUIRE_NAMED_CAMERA =
+False`.
+
+Make sure the tag the car aims at is from the `TAG_FAMILY` family (`tag36h11`
+by default). If the car turns the wrong way, flip `REVERSE_STEERING`.
 
 ## Troubleshooting
 

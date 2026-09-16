@@ -2,12 +2,24 @@
 Camera-guided AprilTag centering for a LEGO Double Motor car.
 
 Setup:
-  - The computer's webcam sits in front of the car and stays fixed.
-  - An AprilTag (family 'tag36h11' by default) is mounted on the car,
-    facing the camera.
-  - The Double Motor drives the car's two wheels. This script watches
-    the tag's horizontal position in the camera feed and steers the
-    car (differential drive) to keep the tag centered in frame.
+  - An iPhone rides on the car as its camera, streaming to the Mac over
+    Continuity Camera (same feed iphone_video.py shows).
+  - An AprilTag (family 'tag36h11' by default) sits still in the world,
+    in front of the car, facing it.
+  - The Double Motor drives the car's two wheels. This script watches the
+    tag's horizontal position in the camera feed and steers the car
+    (differential drive) to keep the tag centered in frame -- i.e. to aim
+    the car at the tag.
+
+Before the first run:
+  1. python enable_continuity_camera.py   (once, per interpreter)
+  2. python list_cameras.py               (confirm the phone is listed)
+  3. python iphone_video.py               (confirm the feed looks right)
+The phone-side checklist lives at the top of iphone_video.py.
+
+This script will not silently fall back to the Mac's built-in webcam --
+that camera isn't on the car, so its view would steer the car nowhere.
+If the phone isn't found it stops and tells you.
 
 Run:
     python apriltag_tracker.py
@@ -32,11 +44,26 @@ CARD_SERIAL = '3685'              # Change to your card's 4-digit serial number
 
 # Which camera to use. CAMERA_NAME is matched against the camera names macOS
 # reports (run list_cameras.py to see them), so the phone is found no matter
-# what index it lands on. Use 'FaceTime' for the Mac's built-in webcam.
+# what index it lands on -- and the index does move around depending on whether
+# the phone was connected when the script started.
 # Set CAMERA_INDEX to a number to override the name match entirely.
 CAMERA_NAME = 'iPhone'
 CAMERA_INDEX = None
-TAG_FAMILY = 'tag36h11'           # AprilTag family printed on the car
+
+# Require CAMERA_NAME to actually be there. The car steers by what the on-board
+# camera sees, so quietly falling back to the Mac's built-in webcam would drive
+# the car off a view bolted to the desk. Set False only if you're deliberately
+# testing with the built-in camera (also set CAMERA_NAME = 'FaceTime').
+REQUIRE_NAMED_CAMERA = True
+
+# Optional capture resolution. None keeps the camera's default -- the iPhone
+# hands over 1920x1080, which is more pixels than tag detection needs; dropping
+# to 1280 x 720 speeds the loop up if detection is lagging. Changing this changes
+# how fast frames arrive, so re-check the tuning below if you touch it.
+CAMERA_WIDTH = None
+CAMERA_HEIGHT = None
+
+TAG_FAMILY = 'tag36h11'           # AprilTag family of the tag the car aims at
 
 # Control tuning (full PID on the normalized horizontal error)
 KP = 50.0             # Proportional gain: reacts to the current offset
@@ -91,8 +118,10 @@ PULSE_OFF_TIME = 0.15  # seconds to coast/settle and get a fresh camera reading 
 # can't brake in time, which is the main cause of overshoot on long approaches.
 SLEW_RATE = 250.0  # percent-speed per second
 
-# If the car turns the wrong way to re-center the tag, flip this to True
-# (depends on which way the camera/tag are physically oriented).
+# If the car turns the wrong way to re-center the tag, flip this to True.
+# False is correct for the camera-on-car setup above (tag drifts right in
+# frame -> car turns right to face it). A rig with the camera off the car
+# watching a tag mounted *on* the car needs the opposite sign.
 REVERSE_STEERING = False
 
 
@@ -114,7 +143,13 @@ def main():
 
     # --- Set up the camera and AprilTag detector --------------------------
     try:
-        cap = open_camera(prefer=CAMERA_NAME, index=CAMERA_INDEX)
+        cap = open_camera(
+            prefer=CAMERA_NAME,
+            index=CAMERA_INDEX,
+            width=CAMERA_WIDTH,
+            height=CAMERA_HEIGHT,
+            required=REQUIRE_NAMED_CAMERA,
+        )
     except RuntimeError as exc:
         print(f"Error: {exc}")
         doublemotor.disconnect()

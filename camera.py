@@ -33,11 +33,17 @@ def find_index(name_fragment):
     return None
 
 
-def open_camera(prefer='iPhone', index=None, width=None, height=None):
+def open_camera(prefer='iPhone', index=None, width=None, height=None,
+                required=False):
     """Open a camera and return the cv2.VideoCapture.
 
     `index`, when given, wins outright. Otherwise the first camera whose
     name contains `prefer` is used, falling back to index 0.
+
+    Pass `required=True` when the wrong camera is worse than no camera --
+    e.g. the tracker, where falling back to the Mac's built-in webcam means
+    driving the car off a view it isn't mounted on. It raises instead.
+
     Raises RuntimeError with the available cameras listed if it can't open.
     """
     cameras = list_cameras()
@@ -45,6 +51,12 @@ def open_camera(prefer='iPhone', index=None, width=None, height=None):
     if index is None:
         index = find_index(prefer)
         if index is None:
+            if required:
+                available = ', '.join(f'{i}: {n}' for i, n in cameras) or 'none found'
+                raise RuntimeError(
+                    f'No camera matching {prefer!r}. Available cameras: {available}. '
+                    f'If you expected your iPhone: run enable_continuity_camera.py '
+                    f'once, then check the phone-side checklist in iphone_video.py.')
             index = 0
             if cameras:
                 print(f'No camera matching {prefer!r}; falling back to '
