@@ -1,4 +1,5 @@
-# Read video from the iPhone (Continuity Camera) with OpenCV.
+# Standalone check that the iPhone feed works before you wire it into
+# apriltag_tracker.py.
 #
 # Setup, once:
 #   1. python enable_continuity_camera.py   (lets Python see Continuity cameras)
@@ -6,27 +7,17 @@
 #   3. Same Apple ID on both devices, Wi-Fi and Bluetooth on, phone near the Mac
 #   4. Phone locked, screen off, held still with the rear camera pointed at the
 #      scene -- iOS only offers the camera when the phone is stationary
-#   5. python list_cameras.py  -> note the index next to your phone's name
+#   5. python list_cameras.py  -> confirm the phone is listed
 #
-# Then set CAMERA_INDEX below and run this file.
+# Then just run this file.
 
 import cv2
 
-CAMERA_INDEX = 0  # 0 is usually the built-in FaceTime HD camera
-
-
-def open_camera(index=CAMERA_INDEX):
-    """Open a camera on macOS and fail loudly if it isn't there."""
-    cap = cv2.VideoCapture(index, cv2.CAP_AVFOUNDATION)
-    if not cap.isOpened():
-        raise RuntimeError(
-            f'Could not open camera index {index}. Run list_cameras.py to see '
-            'what OpenCV can actually find.')
-    return cap
+from camera import open_camera
 
 
 def main():
-    cap = open_camera()
+    cap = open_camera(prefer='iPhone')
     print('Press q to quit.')
     while True:
         ok, frame = cap.read()

@@ -20,6 +20,8 @@ import cv2
 import legoeducation as le
 from pupil_apriltags import Detector
 
+from camera import open_camera
+
 # ---------------------------------------------------------------------------
 # Configuration - edit these for your hardware / setup
 # ---------------------------------------------------------------------------
@@ -28,7 +30,12 @@ from pupil_apriltags import Detector
 CARD_COLOR = le.LEGO_COLOR_BLUE  # Change to your card's color
 CARD_SERIAL = '3685'              # Change to your card's 4-digit serial number
 
-CAMERA_INDEX = 0                  # Which webcam to use
+# Which camera to use. CAMERA_NAME is matched against the camera names macOS
+# reports (run list_cameras.py to see them), so the phone is found no matter
+# what index it lands on. Use 'FaceTime' for the Mac's built-in webcam.
+# Set CAMERA_INDEX to a number to override the name match entirely.
+CAMERA_NAME = 'iPhone'
+CAMERA_INDEX = None
 TAG_FAMILY = 'tag36h11'           # AprilTag family printed on the car
 
 # Control tuning (full PID on the normalized horizontal error)
@@ -106,9 +113,10 @@ def main():
     print("Connected successfully!")
 
     # --- Set up the camera and AprilTag detector --------------------------
-    cap = cv2.VideoCapture(CAMERA_INDEX)
-    if not cap.isOpened():
-        print("Error: could not open camera.")
+    try:
+        cap = open_camera(prefer=CAMERA_NAME, index=CAMERA_INDEX)
+    except RuntimeError as exc:
+        print(f"Error: {exc}")
         doublemotor.disconnect()
         return
 
