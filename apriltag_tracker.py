@@ -249,11 +249,15 @@ def main():
                 )
 
                 # --- Debug overlay ---
-                # Red dot = tag center; turns green once it lands on the blue center line.
+                # Red outline around the tag; center dot turns green once it lands
+                # on the blue center line.
                 dot_color = (0, 255, 0) if centered else (0, 0, 255)
+                tag_cx, tag_cy = int(tag_center_x), int(tag.center[1])
                 for pt_a, pt_b in zip(tag.corners, tag.corners[[1, 2, 3, 0]]):
-                    cv2.line(frame, tuple(pt_a.astype(int)), tuple(pt_b.astype(int)), (0, 255, 0), 2)
-                cv2.circle(frame, (int(tag_center_x), int(tag.center[1])), 5, dot_color, -1)
+                    cv2.line(frame, tuple(pt_a.astype(int)), tuple(pt_b.astype(int)), (0, 0, 255), 2)
+                cv2.circle(frame, (tag_cx, tag_cy), 5, dot_color, -1)
+                cv2.putText(frame, f"({tag_cx}, {tag_cy})", (tag_cx + 10, tag_cy - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
                 if centered:
                     status = "CENTERED"
                 elif abs(error) < FINE_ZONE:
