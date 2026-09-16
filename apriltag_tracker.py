@@ -33,13 +33,18 @@ TAG_FAMILY = 'tag36h11'           # AprilTag family printed on the car
 
 # Control tuning (full PID on the normalized horizontal error)
 KP = 50.0             # Proportional gain: reacts to the current offset
-KI = 7.0               # Integral gain: nudges away small steady-state offset the P term alone leaves behind
-KD = 5.0                # Derivative gain: damps overshoot/oscillation from fast-changing error
+KI = 0.0                # Integral gain: OFF. MIN_SPEED (below) already guarantees the car keeps
+                         # closing the gap, so KI has no steady-state error left to fix — it only
+                         # adds extra push right at the setpoint, which feeds oscillation.
+KD = 10.0                # Derivative gain: damps overshoot/oscillation from fast-changing error
 INTEGRAL_LIMIT = 1.0    # Anti-windup clamp on the accumulated integral term
 BASE_SPEED = 0        # Constant forward speed (0-100) added to both wheels while tracking.
                        # Leave at 0 to only rotate in place to center the tag.
 MAX_SPEED = 100        # Clamp applied to each wheel's final speed (-100 to 100)
-DEADBAND = 0.005        # Normalized error (fraction of half-frame-width) below which we hold still
+# Must be wide enough that the car can actually stop inside it. Continuous driving can't
+# reliably land inside anything tighter than about SLOWDOWN_ZONE's low end, but the pulsed
+# creep (FINE_ZONE, below) takes much smaller steps near the target, so this can be tight.
+DEADBAND = 0.015
 LOST_TAG_TIMEOUT = 0.5  # Seconds without a detection before stopping the motors
 
 # Adaptive gain scheduling: whenever the error crosses zero (the dot swung past
@@ -50,13 +55,29 @@ ADAPT_RECOVERY = 1.01    # Per-frame growth of the KP scale back toward 1.0 when
 KP_SCALE_MIN = 0.3       # Floor on how much KP can be damped down
 KD_BOOST = 1.15          # KD multiplier applied to the running scale on each overshoot
 KD_SCALE_MAX = 2.5       # Ceiling on how much extra damping can be added
-OVERSHOOT_MIN_ERROR = 0.05  # Ignore sign flips smaller than this (camera jitter, not a real overshoot)
+OVERSHOOT_MIN_ERROR = 0.015  # Ignore sign flips smaller than this (camera jitter, not a real overshoot).
+                              # Kept below DEADBAND's neighborhood so genuine bounces near the
+                              # target still get damped instead of staying at full responsiveness.
 
 # Real hardware, not just math: a motor commanded below its minimum effective
 # speed just sits there (not enough torque to overcome friction), which looks
 # like the car "stopped" long before it's actually centered. MIN_SPEED guarantees
 # every non-centered command is strong enough to actually move the car.
 MIN_SPEED = 25
+
+# Start decelerating once the normalized error falls inside this zone: the max
+# allowed speed ramps linearly from MAX_SPEED (at the zone's outer edge) down to
+# MIN_SPEED (right at FINE_ZONE), so the car eases in instead of cruising at full
+# tilt right up to the line. Must be noticeably bigger than FINE_ZONE.
+SLOWDOWN_ZONE = 0.15
+
+# Inside this zone, stop driving continuously and switch to short pulses instead
+# (see PULSE_ON_TIME / PULSE_OFF_TIME): continuous MIN_SPEED is still too strong a
+# push to land inside a tight DEADBAND, so nudge briefly, coast, and re-measure
+# instead of driving straight through the target. Must be > DEADBAND, < SLOWDOWN_ZONE.
+FINE_ZONE = 0.08
+PULSE_ON_TIME = 0.06   # seconds each nudge runs at MIN_SPEED
+PULSE_OFF_TIME = 0.15  # seconds to coast/settle and get a fresh camera reading before the next nudge
 
 # Limit how fast the commanded speed can change per second. Jumping straight to
 # full speed when the tag starts far away builds up momentum the camera loop
@@ -100,6 +121,9 @@ def main():
     kp_scale = 1.0
     kd_scale = 1.0
     prev_steering = 0.0
+    pulse_active_until = 0.0
+    next_pulse_ready_time = 0.0
+    pulse_direction = 0.0
 
     try:
         while True:
@@ -135,6 +159,20 @@ def main():
                     integral = 0.0
                     derivative = 0.0
                     steering = 0.0
+                elif abs(error) < FINE_ZONE:
+                    # Fine pulsed creep: even MIN_SPEED driven continuously is too strong
+                    # a push to land inside DEADBAND, so nudge briefly, coast, and
+                    # re-measure instead of driving straight through the target.
+                    derivative = 0.0
+                    if now < pulse_active_until:
+                        steering = pulse_direction * MIN_SPEED
+                    elif now < next_pulse_ready_time:
+                        steering = 0.0  # coasting between nudges, let the camera settle
+                    else:
+                        pulse_direction = 1.0 if error > 0 else -1.0
+                        pulse_active_until = now + PULSE_ON_TIME
+                        next_pulse_ready_time = pulse_active_until + PULSE_OFF_TIME
+                        steering = pulse_direction * MIN_SPEED
                 else:
                     # Adapt: a real overshoot (sign flip past a noise threshold, not
                     # just camera jitter near zero) damps down; otherwise slowly
@@ -164,6 +202,19 @@ def main():
                     max_delta = SLEW_RATE * dt if dt > 0 else SLEW_RATE / 30.0
                     steering = clamp(steering, prev_steering - max_delta, prev_steering + max_delta)
                     steering = clamp(steering, -MAX_SPEED, MAX_SPEED)
+
+                    # Landing zone: taper the max allowed speed down toward MIN_SPEED
+                    # as the error approaches FINE_ZONE, so it slows on approach instead
+                    # of holding full speed right up until pulsed creep takes over.
+                    zone_span = max(SLOWDOWN_ZONE - FINE_ZONE, 1e-6)
+                    taper = clamp((abs(error) - FINE_ZONE) / zone_span, 0.0, 1.0)
+                    max_allowed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * taper
+                    steering = clamp(steering, -max_allowed, max_allowed)
+
+                    # Reset pulse timing so a fresh pulse starts cleanly if/when we
+                    # cross back into FINE_ZONE, rather than resuming mid-cycle.
+                    pulse_active_until = 0.0
+                    next_pulse_ready_time = 0.0
                 prev_error = error
                 prev_steering = steering
 
@@ -171,9 +222,10 @@ def main():
                 left_speed = clamp(BASE_SPEED + steering, -MAX_SPEED, MAX_SPEED)
                 right_speed = clamp(BASE_SPEED - steering, -MAX_SPEED, MAX_SPEED)
 
-                if not centered:
+                if not centered and abs(error) >= FINE_ZONE:
                     # Guarantee real motion: a command weaker than the motor's minimum
                     # effective speed won't overcome friction, so the car just sits there.
+                    # (Skipped inside FINE_ZONE — the pulse's coast phase is deliberately 0.)
                     if 0 < left_speed < MIN_SPEED:
                         left_speed = MIN_SPEED
                     elif -MIN_SPEED < left_speed < 0:
@@ -202,7 +254,12 @@ def main():
                 for pt_a, pt_b in zip(tag.corners, tag.corners[[1, 2, 3, 0]]):
                     cv2.line(frame, tuple(pt_a.astype(int)), tuple(pt_b.astype(int)), (0, 255, 0), 2)
                 cv2.circle(frame, (int(tag_center_x), int(tag.center[1])), 5, dot_color, -1)
-                status = "CENTERED" if centered else f"error={error:+.2f} kp_x{kp_scale:.2f} kd_x{kd_scale:.2f}"
+                if centered:
+                    status = "CENTERED"
+                elif abs(error) < FINE_ZONE:
+                    status = f"error={error:+.3f} PULSE"
+                else:
+                    status = f"error={error:+.2f} kp_x{kp_scale:.2f} kd_x{kd_scale:.2f}"
                 cv2.putText(frame, f"{status} L={left_speed:.0f} R={right_speed:.0f}",
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, dot_color, 2)
             else:
@@ -217,6 +274,8 @@ def main():
                     kp_scale = 1.0
                     kd_scale = 1.0
                     prev_steering = 0.0
+                    pulse_active_until = 0.0
+                    next_pulse_ready_time = 0.0
                 cv2.putText(frame, "Tag not found", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
