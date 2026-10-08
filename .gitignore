@@ -1,3 +1,5 @@
 my_env_ME193/
 __pycache__/
 *.pyc
+my_env_pingpong_py312/
+ping_pong/pose_landmarker_lite.task
