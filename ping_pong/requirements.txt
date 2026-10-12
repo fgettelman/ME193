@@ -1,0 +1,8 @@
+legoeducation
+opencv-python
+mediapipe
+pupil-apriltags
+paho-mqtt>=2.0
+numpy
+sounddevice
+certifi
