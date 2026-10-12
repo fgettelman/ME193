@@ -24,6 +24,7 @@ class Ball:
         self.z = 1.0
         self.vx = self.vy = self.vz = 0.0
         self.target = (0.5, 0.5)   # where it will cross the player's plane
+        self.launch_y = 0.5        # height it left the last paddle at (for drawing the arc)
 
     @property
     def incoming(self):
@@ -43,6 +44,9 @@ class Game:
         self.state_until = 0.0
         self.arrival_time = None   # set while waiting to judge a ball at the plane
         self.closest_wrist = math.inf
+        self.swing_open = None     # time the swing window opened for this ball
+        self.miss_reason = ""
+        self.miss_time = -math.inf
         self.paused_from = None
 
     # --- level / state ---------------------------------------------------
@@ -76,6 +80,7 @@ class Game:
         self.state = COUNTDOWN
         self.state_until = now + config.COUNTDOWN_S
         self.arrival_time = None
+        self.swing_open = None
 
     def _serve(self):
         b = self.ball
@@ -93,6 +98,7 @@ class Game:
         b.vy = (ty - b.y) / flight
         b.vz = -self.speed
         b.target = (tx, ty)
+        b.launch_y = b.y
 
     def proximity(self):
         """0 (far) .. 1 (at your paddle) while the ball is incoming, else 0."""
@@ -105,7 +111,7 @@ class Game:
     def update(self, now, dt, wrist, swung_between, tilt_deg=0.0):
         """Advance the game.
 
-        wrist          -- (x, y) of the paddle wrist, or None if not seen
+        wrist          -- (x, y) of the paddle blade center, or None if not seen
         swung_between  -- f(t0, t1) -> bool, was there a swing in that window
         tilt_deg       -- paddle roll relative to neutral (aims the return)
 
@@ -124,18 +130,26 @@ class Game:
 
         b = self.ball
 
+        # Once the window is open, remember the closest the paddle got to the
+        # lilac square -- a swing carries it away, so "now" isn't good enough.
+        if self.swing_open is not None and wrist is not None:
+            self.closest_wrist = min(self.closest_wrist, box_dist(wrist, b.target))
+
         # Waiting at the plane for the swing window to play out.
         if self.arrival_time is not None:
-            if wrist is not None:
-                self.closest_wrist = min(self.closest_wrist, _dist(wrist, (b.x, b.y)))
-            in_place = self.closest_wrist <= config.HIT_RADIUS
-            t0 = self.arrival_time
-            if in_place and swung_between(t0 - config.SWING_WINDOW_S, now):
-                self._hit(wrist or (b.x, b.y), tilt_deg)
+            in_place = self.closest_wrist <= config.HIT_BOX
+            if in_place and swung_between(self.swing_open, now):
+                self._hit(wrist or b.target, tilt_deg)
                 events.append("hit")
                 if self.streak % config.MILESTONE_EVERY == 0:
                     events.append("milestone")
-            elif now >= t0 + config.SWING_WINDOW_S:
+            elif now >= self.arrival_time + config.SWING_LATE_S:
+                if not in_place:
+                    self.miss_reason = "Paddle wasn't in the lilac square"
+                elif swung_between(self.swing_open - 1.5, self.swing_open):
+                    self.miss_reason = "Too early - swing after the bounce"
+                else:
+                    self.miss_reason = "No swing detected - swing harder"
                 events.extend(self._miss(now))
             return events
 
@@ -151,10 +165,12 @@ class Game:
             b.y = min(0.9, max(0.15, b.y))
             b.vy = -b.vy
 
+        if b.incoming and self.swing_open is None and b.z <= config.SWING_OPEN_Z:
+            self.swing_open = now
+            self.closest_wrist = box_dist(wrist, b.target) if wrist else math.inf
         if b.incoming and b.z <= 0.0:
             b.z = 0.0
             self.arrival_time = now
-            self.closest_wrist = _dist(wrist, (b.x, b.y)) if wrist else math.inf
         elif not b.incoming and b.z >= 1.0:
             b.z = 1.0
             self._aim_incoming()
@@ -164,6 +180,8 @@ class Game:
     def _hit(self, wrist, tilt_deg):
         b = self.ball
         self.arrival_time = None
+        self.swing_open = None
+        b.launch_y = b.y
         self.streak += 1
         self.best = max(self.best, self.streak)
         self.speed = min(config.MAX_SPEED, self.speed * config.SPEEDUP_PER_HIT)
@@ -173,6 +191,8 @@ class Game:
 
     def _miss(self, now):
         self.arrival_time = None
+        self.swing_open = None
+        self.miss_time = now
         self.streak = 0
         self.misses += 1
         self.speed = self.base_speed
@@ -184,5 +204,7 @@ class Game:
         return ["miss"]
 
 
-def _dist(a, b):
-    return math.hypot(a[0] - b[0], a[1] - b[1])
+def box_dist(a, b):
+    """How far a is from b, as a fraction of screen height, measured square-wise:
+    <= config.HIT_BOX means a is inside the lilac square centered on b."""
+    return max(abs(a[0] - b[0]) * config.ASPECT, abs(a[1] - b[1]))

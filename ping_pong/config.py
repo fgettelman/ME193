@@ -33,13 +33,17 @@ PROCESS_WIDTH = 640               # frames are shrunk to this for pose + tags
 # If the green wrist dot shows up on the wrong hand, flip this.
 PADDLE_HAND = "right"
 MIN_WRIST_VISIBILITY = 0.5
+# The Double Motor is the paddle's handle, so the blade sits past your hand.
+# Blade center = wrist + PADDLE_REACH x forearm length, pointing along the
+# forearm / index finger. Blade radius = PADDLE_BLADE x forearm length.
+PADDLE_REACH = 0.6
+PADDLE_BLADE = 0.3
 POSE_MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
                   "pose_landmarker_lite/float16/latest/pose_landmarker_lite.task")
 POSE_MODEL_FILE = "pose_landmarker_lite.task"
 
 # --- AprilTags --------------------------------------------------------------
 TAG_FAMILY = "tag36h11"
-TAG_START = 0
 # tag id -> (level name, ball speed in depth-units/s, hub light color)
 LEVELS = {
     1: ("Easy",   0.35, le.LEGO_COLOR_GREEN),
@@ -56,10 +60,22 @@ GYRO_EMA_ALPHA = 0.4              # low-pass on gyro magnitude
 SWING_REFRACTORY_S = 0.30         # one swing can't count twice
 # Threshold = noise + this fraction of the way up to your typical swing peak.
 SWING_THRESHOLD_FRACTION = 0.4
+# Machine-learning swing detector trained with train_swing.py. When
+# swing_model.json exists it replaces the threshold (and the calibration steps).
+USE_ML_SWING = True
+ML_SWING_MODEL = "swing_model.json"
+ML_SWING_P = 0.5                  # P(swing) needed to count as a swing
+ML_MIN_SPIN = 50                  # ignore gyro wiggles smaller than this
 
 # --- Game feel --------------------------------------------------------------
-HIT_RADIUS = 0.16                 # how close (normalized screen units) the wrist must be
-SWING_WINDOW_S = 0.18             # swing must land within +/- this of ball arrival
+# The paddle blade's center must be inside the lilac square to hit. Half the
+# square's side, as a fraction of screen height (0.15 -> a 216 px square at 720p).
+HIT_BOX = 0.15
+ASPECT = CAMERA_WIDTH / CAMERA_HEIGHT
+# The swing window opens once the ball is this close (depth 0..1) -- around
+# when it bounces on your side -- and closes this long after it reaches you.
+SWING_OPEN_Z = 0.3
+SWING_LATE_S = 0.3
 SPEEDUP_PER_HIT = 1.05
 MAX_SPEED = 1.4
 K_OFFSET = 2.0                    # hitting off-center angles the return
@@ -72,10 +88,6 @@ MILESTONE_EVERY = 5               # celebrate every N hits in a row
 # --- Haptics ----------------------------------------------------------------
 HIT_RUMBLE_SPEED = 100
 HIT_RUMBLE_MS = 120
-MISS_RUMBLE_SPEED = 100
-MISS_PULSES = 3
-PROXIMITY_MAX_SPEED = 45          # rumble while the ball approaches, scaled 0..this
-PROXIMITY_MIN_SPEED = 15          # below this the motor won't actually turn
 THUNK_DEG = 40
 THUNK_KP = 2.0                    # PD gains from the 9-17 tracker idea
 THUNK_KD = 0.05

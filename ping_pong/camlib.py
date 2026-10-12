@@ -13,25 +13,31 @@ import cv2
 import numpy as np
 
 
-def _camera_names():
-    """Return display names for cameras from macOS system_profiler.
-    Note: order may not match OpenCV's AVFoundation index order — use
-    the visual preview in pick_camera() to identify cameras reliably."""
+def _camera_info():
+    """Cameras from macOS system_profiler as (name, is_phone), in OpenCV's
+    AVFoundation index order -- OpenCV sorts devices by their unique ID."""
     try:
         raw  = subprocess.check_output(
             ['system_profiler', 'SPCameraDataType', '-json'],
             text=True, stderr=subprocess.DEVNULL,
         )
         cams = json.loads(raw).get('SPCameraDataType', [])
-        return [c.get('_name', f'Camera {i}') for i, c in enumerate(cams)]
     except Exception:
         return []
+    cams.sort(key=lambda c: c.get('spcamera_unique-id', ''))
+    info = []
+    for i, c in enumerate(cams):
+        name = c.get('_name', f'Camera {i}')
+        ident = f"{name} {c.get('spcamera_model-id', '')}".lower()
+        info.append((name, 'iphone' in ident or 'ipad' in ident))   # Continuity Camera
+    return info
 
 
 def pick_camera(width=1280, height=720):
     """
     Scan for connected cameras, show a live preview thumbnail of each one,
-    and let the user press the matching number key to choose.
+    and let the user press the matching number key to choose. iPhone / iPad
+    (Continuity) cameras are left out.
 
     Returns:
         cap      — cv2.VideoCapture, already opened and warmed up
@@ -43,12 +49,15 @@ def pick_camera(width=1280, height=720):
     THUMB_W, THUMB_H = 320, 240
 
     print("Scanning for cameras…")
-    names = _camera_names()
+    info = _camera_info()
 
     # Probe each index and grab a preview frame
     available = []   # list of (index, label)
     previews  = {}   # index -> BGR thumbnail
     for i in range(6):
+        if i < len(info) and info[i][1]:
+            print(f"Skipping phone camera: [{i}] {info[i][0]}")
+            continue
         cap = cv2.VideoCapture(i, cv2.CAP_AVFOUNDATION)
         if not cap.isOpened():
             cap.release()
@@ -58,7 +67,7 @@ def pick_camera(width=1280, height=720):
             ret, frame = cap.read()
         if ret and frame is not None:
             previews[i] = cv2.resize(frame, (THUMB_W, THUMB_H))
-        label = names[i] if i < len(names) else f"Camera {i}"
+        label = info[i][0] if i < len(info) else f"Camera {i}"
         available.append((i, label))
         cap.release()
 

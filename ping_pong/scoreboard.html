@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ping-Pong Scoreboard</title>
+<!-- Live scoreboard for ping_pong.py: listens to the MQTT topic the game
+     publishes to (config.MQTT_TOPIC) over secure WebSockets. Open in any browser. -->
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f4fb; --card: #ffffff; --ink: #1d1b26; --muted: #6b6880;
+    --line: #e2deef; --accent: #8a5cf6; --lilac: #c9a7f5; --good: #1f9d55; --bad: #d64545;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14121b; --card: #1e1b28; --ink: #f1eef9; --muted: #a29db8;
+      --line: #322d42; --accent: #b08cff; --lilac: #7d5cc0; --good: #4ade80; --bad: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { margin: 0; font-size: 1.5rem; letter-spacing: -0.01em; }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--good); box-shadow: 0 0 0 4px color-mix(in srgb, var(--good) 25%, transparent); }
+  .dot.off { background: var(--bad); }
+  .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-top: 20px; }
+  @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .label { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .big {
+    font-size: clamp(6rem, 22vw, 11rem); font-weight: 800; line-height: 1; margin: 8px 0 4px;
+    font-variant-numeric: tabular-nums; color: var(--accent); transition: transform .15s;
+  }
+  .big.bump { transform: scale(1.08); }
+  .sub { color: var(--muted); font-size: .95rem; }
+  .stat { font-size: 2.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stats { display: grid; gap: 18px; }
+  svg { width: 100%; height: 120px; display: block; margin-top: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  input {
+    flex: 1 1 240px; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); font: inherit;
+  }
+  button {
+    padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg);
+    color: var(--ink); font: inherit; cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:hover { filter: brightness(1.05); }
+  .log { margin: 10px 0 0; padding: 0; list-style: none; max-height: 220px; overflow: auto;
+         font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+  .log li { border-bottom: 1px solid var(--line); padding: 2px 0; overflow-wrap: anywhere; }
+  .note { font-size: .85rem; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>🏓 Virtual Ping-Pong — Live Score</h1>
+    <span class="status"><span id="dot" class="dot"></span><span id="status">Connecting…</span></span>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <div class="label">Current streak</div>
+      <div id="streak" class="big">–</div>
+      <div id="updated" class="sub">Waiting for the game… (it re-sends the score every 5 s)</div>
+      <svg id="chart" viewBox="0 0 600 120" preserveAspectRatio="none" aria-label="Streak history"></svg>
+    </section>
+
+    <section class="card stats">
+      <div><div class="label">Best this session</div><div id="best" class="stat">0</div></div>
+      <div><div class="label">Hits seen</div><div id="hits" class="stat">0</div></div>
+      <div><div class="label">Misses seen</div><div id="misses" class="stat">0</div></div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <div class="label">Topic</div>
+    <div class="row">
+      <input id="topic" value="ME193/Rogers/Fiona" spellcheck="false" aria-label="MQTT topic">
+      <button id="listen" class="primary">Listen</button>
+    </div>
+    <div class="row">
+      <span class="sub">Test without playing:</span>
+      <button data-test="hit">+1 hit</button>
+      <button data-test="miss">Miss (reset to 0)</button>
+    </div>
+    <p class="note">Test buttons publish to the topic above on test.mosquitto.org (a public broker), exactly like the game does.</p>
+    <div class="label" style="margin-top:14px">Messages</div>
+    <ul id="log" class="log"></ul>
+  </section>
+</main>
+
+<script>
+const BROKER = "wss://test.mosquitto.org:8081";
+const $ = id => document.getElementById(id);
+let client, topic = $("topic").value.trim();
+let current = null, best = 0, hits = 0, misses = 0, history = [];
+
+function setStatus(text, state) {
+  $("status").textContent = text;
+  $("dot").className = "dot " + (state || "");
+}
+
+function log(text) {
+  const li = document.createElement("li");
+  li.textContent = new Date().toLocaleTimeString() + "  " + text;
+  $("log").prepend(li);
+  while ($("log").children.length > 100) $("log").lastChild.remove();
+}
+
+function drawChart() {
+  const svg = $("chart"), pts = history.slice(-60);
+  if (pts.length < 2) { svg.innerHTML = ""; return; }
+  const max = Math.max(3, ...pts), W = 600, H = 120, pad = 8;
+  const xy = pts.map((v, i) => [i / (pts.length - 1) * W, H - pad - v / max * (H - 2 * pad)]);
+  const line = xy.map(p => p.join(",")).join(" ");
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent");
+  svg.innerHTML =
+    `<polygon points="0,${H} ${line} ${W},${H}" fill="${accent}" opacity="0.15"/>` +
+    `<polyline points="${line}" fill="none" stroke="${accent}" stroke-width="3" vector-effect="non-scaling-stroke"/>`;
+}
+
+function onScore(value) {
+  const prev = current;
+  current = value;
+  if (prev !== null && value > prev) hits += value - prev;
+  if (prev !== null && value === 0 && prev > 0) misses += 1;
+  best = Math.max(best, value);
+  if (prev !== value) {
+    history.push(value);
+    const el = $("streak");
+    el.classList.add("bump"); setTimeout(() => el.classList.remove("bump"), 150);
+  }
+  $("streak").textContent = value;
+  $("best").textContent = best;
+  $("hits").textContent = hits;
+  $("misses").textContent = misses;
+  $("updated").textContent = "Last update " + new Date().toLocaleTimeString();
+  drawChart();
+}
+
+function connect() {
+  setStatus("Connecting…");
+  client = mqtt.connect(BROKER, { clientId: "me193-board-" + Math.random().toString(16).slice(2, 10), reconnectPeriod: 2000 });
+  client.on("connect", () => { setStatus("Live on test.mosquitto.org", "on"); subscribe(topic); });
+  client.on("reconnect", () => setStatus("Reconnecting…", "off"));
+  client.on("offline", () => setStatus("Offline — retrying", "off"));
+  client.on("error", e => { setStatus("Error: " + e.message, "off"); log("error: " + e.message); });
+  client.on("message", (t, payload) => {
+    const text = payload.toString();
+    log(`${t}  ${text}`);
+    const v = parseFloat(text);
+    if (t === topic && Number.isFinite(v)) onScore(Math.round(v));
+  });
+}
+
+function subscribe(t) {
+  client.subscribe(t, { qos: 1 }, err => log(err ? "subscribe failed: " + err.message : "listening on " + t));
+}
+
+$("listen").onclick = () => {
+  const t = $("topic").value.trim();
+  if (!t || t === topic || !client) return;
+  client.unsubscribe(topic);
+  topic = t; current = null; best = hits = misses = 0; history = [];
+  $("streak").textContent = "–"; drawChart();
+  subscribe(topic);
+};
+
+document.querySelectorAll("[data-test]").forEach(btn => btn.onclick = () => {
+  if (!client || !client.connected) return;
+  const next = btn.dataset.test === "hit" ? (current || 0) + 1 : 0;
+  client.publish(topic, next.toFixed(1), { qos: 1 });
+});
+
+connect();
+</script>
+</body>
+</html>

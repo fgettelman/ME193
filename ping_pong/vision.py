@@ -1,5 +1,6 @@
 """
-Camera vision: MediaPipe Pose for the paddle wrist, AprilTags for level and
+Camera vision: MediaPipe Pose for the paddle (the Double Motor is the handle,
+so the blade is placed past the hand along the forearm), AprilTags for level and
 start. Pose runs on the un-mirrored frame and the x-coordinates are flipped,
 because AprilTags can't be decoded from a mirrored image.
 """
@@ -17,9 +18,14 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 from pupil_apriltags import Detector
 
+import numpy as np
+
 import config
 
+LEFT_ELBOW, RIGHT_ELBOW = 13, 14
 LEFT_WRIST, RIGHT_WRIST = 15, 16
+LEFT_INDEX, RIGHT_INDEX = 19, 20
+MIN_JOINT_VISIBILITY = 0.3
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -45,15 +51,20 @@ class Vision:
         self.start_ms = start_ms
         self._last_ts = -1
         self.tags = Detector(families=config.TAG_FAMILY)
-        self.wrist_index = RIGHT_WRIST if config.PADDLE_HAND == "right" else LEFT_WRIST
+        right = config.PADDLE_HAND == "right"
+        self.wrist_index = RIGHT_WRIST if right else LEFT_WRIST
+        self.elbow_index = RIGHT_ELBOW if right else LEFT_ELBOW
+        self.finger_index = RIGHT_INDEX if right else LEFT_INDEX
 
     def _small(self, frame):
         h, w = frame.shape[:2]
         scale = config.PROCESS_WIDTH / w
         return cv2.resize(frame, (config.PROCESS_WIDTH, int(h * scale))), scale
 
-    def wrist(self, frame):
-        """Paddle wrist as (x, y) in normalized *mirrored* coords, or None."""
+    def paddle(self, frame):
+        """Where the paddle is, in normalized *mirrored* coords, or None:
+        (blade center (x, y), grip = wrist (x, y), blade radius as a fraction of
+        screen height)."""
         small, _ = self._small(frame)
         rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
         ts = max(self._last_ts + 1, int(time.time() * 1000) - self.start_ms)
@@ -61,19 +72,43 @@ class Vision:
         result = self.landmarker.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), ts)
         if not result.pose_landmarks:
             return None
-        lm = result.pose_landmarks[0][self.wrist_index]
+        pose = result.pose_landmarks[0]
+        lm = pose[self.wrist_index]
         if (lm.visibility or 0) < config.MIN_WRIST_VISIBILITY:
             return None
-        return (1.0 - lm.x, lm.y)
+
+        # Work in units of screen height so x and y are measured the same way.
+        aspect = frame.shape[1] / frame.shape[0]
+        def pt(i):
+            p = pose[i]
+            return np.array([p.x * aspect, p.y]), (p.visibility or 0) >= MIN_JOINT_VISIBILITY
+        wrist, _ = pt(self.wrist_index)
+        elbow, elbow_ok = pt(self.elbow_index)
+        finger, finger_ok = pt(self.finger_index)
+
+        def unit(v):
+            n = np.linalg.norm(v)
+            return v / n if n > 1e-6 else None
+        forearm = unit(wrist - elbow) if elbow_ok else None
+        hand = unit(finger - wrist) if finger_ok else None
+        dirs = [d for d in (forearm, hand) if d is not None]
+        direction = unit(sum(dirs)) if dirs else None
+        if direction is None:
+            direction = np.array([0.0, -1.0])            # straight up
+        length = np.linalg.norm(wrist - elbow) if elbow_ok else 0.25
+
+        center = wrist + direction * config.PADDLE_REACH * length
+        mirror = lambda p: (1.0 - p[0] / aspect, float(p[1]))
+        return mirror(center), mirror(wrist), config.PADDLE_BLADE * length
 
     def detect_tags(self, frame):
         """List of (tag_id, corners in mirrored full-frame pixels)."""
-        small, scale = self._small(frame)
-        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        # Full resolution: shrinking the frame loses tags held at arm's length.
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         w = frame.shape[1]
         found = []
         for d in self.tags.detect(gray):
-            corners = d.corners / scale
+            corners = d.corners.copy()
             corners[:, 0] = w - corners[:, 0]
             found.append((d.tag_id, corners))
         return found
@@ -101,6 +136,9 @@ class TagStabilizer:
                 self.fired.add(i)
                 out.append(i)
         return out
+
+    def registered(self, tag_id):
+        return tag_id in self.fired
 
     def progress(self, tag_id):
         return min(1.0, self.counts.get(tag_id, 0) / self.frames)

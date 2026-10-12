@@ -11,7 +11,7 @@ posted live over MQTT.
 |---|---|
 | **Pose** (is the paddle in the right place?) | MediaPipe Pose on the webcam (`camlib.pick_camera()` + MediaPipe VIDEO mode, as in CAMLIB.md). Track the wrist of your paddle hand. A hit only counts if the wrist is within `HIT_RADIUS` of where the ball crosses your plane. |
 | **IMU** (are they swinging?) | Double Motor IMU (`imu_device.gyroscopeX/Y/Z`, `accelerometerX/Y/Z`, `roll`). A swing is a spike in gyro magnitude above a calibrated threshold. Hit = **in position AND swinging** within a ±150 ms window of the ball arriving. |
-| **AprilTag** (level + start) | `pupil_apriltags` (same as `apriltag_tracker.py`). Tags 1/2/3 = Easy/Medium/Hard (ball speed). Tag 0 = START. Tag has to be seen for ~10 frames in a row before it counts, so a quick flash doesn't trigger it. |
+| **AprilTag** (level + start) | `pupil_apriltags` (same as `apriltag_tracker.py`). Tags 1/2/3 = Easy/Medium/Hard (ball speed); showing one also starts the game. Tag has to be seen for ~10 frames in a row before it counts, so a quick flash doesn't trigger it. |
 | **Live score over MQTT** | `paho-mqtt` publishes the **current number of continuous hits** as a float (e.g. `"7.0"`) to `ME193/Rogers/Fiona` on `test.mosquitto.org`. Published every time it changes (including dropping to `0.0` on a miss), plus a heartbeat every 5 s. |
 | **Everything from class** | `lelib` (BLE + connection card), IMU, PD control (9-17), AprilTag + camera (tracker), pose/MediaPipe (camlib), audio/whistle (miclib + whistle_class) |
 | **Something new / fun** | **Haptic feedback**: an off-center weight on one Double Motor output turns it into a rumble motor (see below). Also **paddle tilt changes the return angle** (IMU roll), so you can aim the ball. |
@@ -23,7 +23,7 @@ posted live over MQTT.
   - Motor B: short arm that taps your hand → "thunk" on contact, using a
     **PD position move** (Kp/Kd idea from `9-17.py`): snap to +40°, then back to 0.
 - **Webcam** on the laptop facing you (about 1.5–2 m away, upper body in frame).
-- **AprilTags** (tag36h11) printed on cards: IDs 0 (START), 1, 2, 3 (levels).
+- **AprilTags** (tag36h11) printed on cards: IDs 1, 2, 3 (levels).
 - Built-in **hub light** shows the level color; **hub beep** for sound effects.
 
 ## Game flow (state machine)
@@ -36,7 +36,7 @@ CONNECT ─► CALIBRATE ─► LOBBY ─► COUNTDOWN ─► RALLY ─┬─(hi
 
 1. **CONNECT** – connect the Double Motor by connection card (`lelib.doubleMotor().connect(CARD_SERIAL, CARD_COLOR)`), open the camera, connect to MQTT.
 2. **CALIBRATE** – "hold the paddle still for 2 s": record gyro noise → swing threshold = mean + 6·std (with a sensible minimum). Then `reset_heading()` and record the neutral roll.
-3. **LOBBY** – show a level tag (1/2/3) → sets ball speed, hub light color, confirmation beep. Show tag 0 → start.
+3. **LOBBY** – show a level tag (1/2/3) → sets ball speed, hub light color, confirmation beep, and the countdown starts.
 4. **COUNTDOWN** – 3-2-1 on screen + beeps.
 5. **RALLY** – the ball flies toward you (gets bigger as it gets closer). When it reaches your plane:
    - wrist near ball **and** swing detected → **HIT**: streak +1, short rumble + arm thunk, ball goes back. The return angle comes from where it hit on the paddle and your paddle tilt (roll). Speed goes up a little each hit.

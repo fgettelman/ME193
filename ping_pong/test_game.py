@@ -2,8 +2,11 @@
 Tests for the parts that don't need hardware.  Run:  python -m unittest test_game
 """
 
+import math
 import random
 import unittest
+
+import numpy as np
 
 import config
 import game as g
@@ -87,6 +90,25 @@ class GameTests(unittest.TestCase):
             events = game.update(now, DT, None, lambda a, b: False)
         self.assertTrue(game.ball.incoming)
 
+    def test_swing_after_bounce_counts_even_if_paddle_moves_away(self):
+        game, now = started_game()
+        target = game.ball.target
+        swing_t = None
+        while game.arrival_time is None:
+            now += DT
+            if game.swing_open is not None and swing_t is None:
+                swing_t = now            # swing as the ball comes off the bounce
+            game.update(now, DT, target if swing_t is None else (0.0, 0.0),
+                        lambda a, b: swing_t is not None and a <= swing_t <= b)
+        events = game.update(now + DT, DT, (0.0, 0.0), lambda a, b: a <= swing_t <= b)
+        self.assertIn("hit", events)
+
+    def test_miss_says_why(self):
+        game, now = started_game()
+        now = run_to_plane(game, now)
+        game.update(now + 1.0, DT, (game.ball.x + 0.5, game.ball.y), lambda a, b: True)
+        self.assertIn("lilac square", game.miss_reason)
+
     def test_level_sets_speed(self):
         game = g.Game()
         game.set_level(3)
@@ -113,6 +135,33 @@ class SwingTests(unittest.TestCase):
                 t += 0.2
         self.assertEqual(len(c.peaks), 3)
         self.assertTrue(c.noise < c.threshold() < 550)
+
+
+class MLSwingTests(unittest.TestCase):
+    def _clip(self, rng, swing, n=100):
+        c = rng.normal(0, 5, (n, 6))
+        c[:, 5] += 1000                       # gravity on the accelerometer
+        if swing:
+            bump = np.exp(-((np.arange(n) - 50) / 3.0) ** 2)
+            c[:, :3] += np.outer(bump, [900, 600, 300])
+            c[:, 3:] += np.outer(bump, [2000, 1500, 500])
+        else:                                  # a slow, gentle repositioning
+            bump = np.exp(-((np.arange(n) - 50) / 12.0) ** 2)
+            c[:, :3] += np.outer(bump, [120, 80, 40])
+        return c
+
+    def test_detector_fires_once_on_swing_and_not_on_reposition(self):
+        import train_swing as ts
+        from paddle import MLSwingDetector
+        rng = np.random.default_rng(0)
+        clips = [self._clip(rng, i % 2 == 0) for i in range(20)]
+        X = np.array([ts.features(ts.peak_window(c)) for c in clips])
+        model = ts.fit_logistic(X, np.array([1.0, 0.0] * 10))
+        for swing in (True, False):
+            det = MLSwingDetector(model, ts.RATE_HZ, ts.SUB_S)
+            fired = [det.feed(i / ts.RATE_HZ, s) for i, s in enumerate(self._clip(rng, swing))]
+            self.assertEqual(sum(fired), 1 if swing else 0)
+        self.assertAlmostEqual(det.last_swing(), -math.inf)
 
 
 class TagTests(unittest.TestCase):
