@@ -10,15 +10,51 @@ Run in a second terminal while sumo.py is running:
     python teleop.py
 """
 
+import os
 import sys
-import termios
-import tty
 
 import paho.mqtt.client as mqtt
 
 import config
 
 KEYS = {"c": "charge", " ": "charge", "o": "out", "r": "reset"}
+
+if os.name == "nt":
+    import msvcrt
+
+    class RawKeys:
+        """Windows: msvcrt already reads one key at a time, no Enter needed."""
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            pass
+
+        def read(self):
+            key = msvcrt.getwch()
+            if key in ("\x00", "\xe0"):    # arrow/function keys send two codes
+                msvcrt.getwch()
+                return ""
+            if key == "\x03":              # Ctrl+C
+                raise KeyboardInterrupt
+            return key
+else:
+    import termios
+    import tty
+
+    class RawKeys:
+        """Mac/Linux: put the terminal in cbreak mode so keys arrive without Enter."""
+        def __enter__(self):
+            self.fd = sys.stdin.fileno()
+            self.old = termios.tcgetattr(self.fd)
+            tty.setcbreak(self.fd)
+            return self
+
+        def __exit__(self, *exc):
+            termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
+
+        def read(self):
+            return sys.stdin.read(1)
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
@@ -41,22 +77,19 @@ def main():
     client.loop_start()
 
     print("c/SPACE = charge   o = out   r = reset   q = quit")
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
     try:
-        tty.setcbreak(fd)          # read one key at a time, no Enter needed
-        while True:
-            key = sys.stdin.read(1).lower()
-            if key == "q":
-                break
-            cmd = KEYS.get(key)
-            if cmd:
-                client.publish(config.TOPIC_CMD, cmd, qos=1)
-                print(f"sent: {cmd}\r")
+        with RawKeys() as keys:
+            while True:
+                key = keys.read().lower()
+                if key == "q":
+                    break
+                cmd = KEYS.get(key)
+                if cmd:
+                    client.publish(config.TOPIC_CMD, cmd, qos=1)
+                    print(f"sent: {cmd}\r", flush=True)
     except KeyboardInterrupt:
         pass
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
         client.loop_stop()
         client.disconnect()
 

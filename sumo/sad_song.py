@@ -3,7 +3,8 @@ The sad song for when we get pushed out: "wah wah wah waaaah" (sad trombone).
 
 Plays two ways at once:
   - on the laptop speakers (synthesized with numpy the first time, cached in
-    ./sounds/sad_trombone.wav, played with macOS `afplay`)
+    ./sounds/sad_trombone.wav, played with `winsound` on Windows or
+    `afplay` on macOS)
   - on the LEGO hub's beeper, note by note, so the robot itself is sad too
 """
 
@@ -54,8 +55,12 @@ def play(hub=None):
     if not os.path.exists(WAV_PATH):
         _make_wav()
     try:
-        subprocess.Popen(["afplay", WAV_PATH], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except OSError as e:
+        if os.name == "nt":
+            import winsound
+            winsound.PlaySound(WAV_PATH, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        else:
+            subprocess.Popen(["afplay", WAV_PATH], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (OSError, RuntimeError) as e:
         print(f"sad song (laptop): {e}")
     if hub is not None:
         threading.Thread(target=_beep_song, args=(hub,), daemon=True).start()
