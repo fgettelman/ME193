@@ -4,6 +4,7 @@ Put the app on the UNO Q and (re)start it over SSH, without Arduino App Lab.
     python deploy.py           # copy unoq_app/ (code + trained models), restart
     python deploy.py --logs    # follow the app's output (like App Lab's console)
     python deploy.py --start   # just start the app (e.g. after the board rebooted)
+    python deploy.py --stop    # stop the app (the board stays on)
     python deploy.py --host 10.247.137.130   # if the board's IP changed
 
 App Lab finds boards by mDNS, which Tufts Wi-Fi blocks, but SSH to the board's
@@ -102,6 +103,7 @@ def main():
     ap.add_argument("--host", default=BOARD_HOST, help="board IP (default %(default)s)")
     ap.add_argument("--logs", action="store_true", help="just follow the app's output")
     ap.add_argument("--start", action="store_true", help="just start the app")
+    ap.add_argument("--stop", action="store_true", help="stop the app")
     args = ap.parse_args()
 
     if args.logs:
@@ -112,6 +114,11 @@ def main():
             pass
         return
 
+    if args.stop:
+        print(f"Stopping the app on {args.host}...")
+        if ssh(args.host, f"arduino-app-cli app stop {APP_ID} 2>&1 | grep -E 'error:|stopped|fail'"):
+            raise SystemExit("Couldn't stop the app. Is the board on, and is the IP right?")
+        return
     if args.start:
         if not start(args.host):
             raise SystemExit("Couldn't start the app. Is the board on, and is the IP right?")

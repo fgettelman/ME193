@@ -29,7 +29,11 @@ python run.py --person fiona   # or name them directly
 
 `run.py` trains on that person's recordings, uploads the models to the board
 if they aren't there yet (asks for the board's password, about 1 minute),
-starts the app if needed, and shows both models' answers live. Type `q` to quit.
+starts the app if needed, and shows both models' answers live.
+
+**To end it:** type `q` (or Ctrl+C) to close the live view on the laptop. The
+board keeps classifying until you run `python deploy.py --stop` or unplug its
+battery.
 
 ## Add a person / record more
 
@@ -45,6 +49,7 @@ python run.py             # then pick them
 | `python live_view.py` | Just watch the live answers (and send commands like `record still`, `stop`) |
 | `python deploy.py` | Upload `unoq_app/` and restart the app on the board |
 | `python deploy.py --start` | Start the app (e.g. after the board rebooted) |
+| `python deploy.py --stop` | Stop the app on the board (the board stays on) |
 | `python deploy.py --logs` | Follow the board's own output |
 | `python train.py [--person X]` | Train both models (copies them to `unoq_app/python/models/`) |
 | `python evaluate.py [--person X]` | Accuracy, confusion matrices, plots in `results/` |
