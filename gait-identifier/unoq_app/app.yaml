@@ -1,0 +1,5 @@
+name: Gait Identifier
+description: "Thigh-worn MPU-6050: still / walk / run / bike, two non-neural models"
+icon: 🚶
+ports: []
+bricks: []
