@@ -7,6 +7,7 @@ Make the two report figures in results/.
   system_diagram.png    how data flows: sensor -> board -> models -> laptop
   model_comparison.png  how each model decides, and how accurate each one is
                         on recordings it never trained on
+  (each also as .pdf, plus gait_figures.pdf with both pages)
 """
 
 import argparse
@@ -17,6 +18,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt                   # noqa: E402
 import numpy as np                                # noqa: E402
+from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 from matplotlib.patches import FancyBboxPatch     # noqa: E402
 
 import learn                                      # noqa: E402
@@ -109,8 +111,7 @@ def system_diagram(peak_name, cv):
             arrow(ax, x + 2.75, 0.75, x + 3.25, 0.75)
     arrow(ax, 10.2, 1.5, 10.2, 2.35)
     ax.text(10.32, 1.92, "trained models", fontsize=8, color=MUTED, va="center")
-    fig.savefig(os.path.join(OUT, "system_diagram.png"), dpi=160, bbox_inches="tight")
-    plt.close(fig)
+    return fig
 
 
 # --- Figure 2: the two models side by side ----------------------------------
@@ -231,8 +232,7 @@ def model_comparison(ds, peak_spec, preds, person):
         for s in ax.spines.values():
             s.set_visible(False)
 
-    fig.savefig(os.path.join(OUT, "model_comparison.png"), dpi=160, bbox_inches="tight")
-    plt.close(fig)
+    return fig
 
 
 def main():
@@ -252,10 +252,20 @@ def main():
     }
     cv = {k: learn.accuracy(ds.y, p) for k, p in preds.items()}
     os.makedirs(OUT, exist_ok=True)
-    system_diagram(features.direction_name(peak_spec["axis"], peak_spec["sign"]), cv)
-    model_comparison(ds, peak_spec, preds, args.person)
+    figs = {
+        "system_diagram": system_diagram(features.direction_name(peak_spec["axis"],
+                                                                 peak_spec["sign"]), cv),
+        "model_comparison": model_comparison(ds, peak_spec, preds, args.person),
+    }
+    with PdfPages(os.path.join(OUT, "gait_figures.pdf")) as pdf:
+        for name, fig in figs.items():
+            fig.savefig(os.path.join(OUT, name + ".png"), dpi=160, bbox_inches="tight")
+            fig.savefig(os.path.join(OUT, name + ".pdf"), bbox_inches="tight")
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
     print(f"Model 1 {100 * cv['peak']:.1f}%, Model 2 {100 * cv['full']:.1f}%")
-    print(f"Saved {OUT}/system_diagram.png and model_comparison.png")
+    print(f"Saved in {OUT}/: system_diagram and model_comparison (.png and .pdf), "
+          "gait_figures.pdf (both)")
 
 
 if __name__ == "__main__":
