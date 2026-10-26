@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 my_env_pingpong_py312/
 ping_pong/pose_landmarker_lite.task
+my_env_gait_py312/
+gait-identifier/models/deployed.json
