@@ -1,0 +1,4 @@
+numpy
+torch
+matplotlib
+paho-mqtt>=2.0

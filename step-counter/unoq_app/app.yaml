@@ -1,0 +1,5 @@
+name: Step Counter
+description: "Thigh-worn MPU-6050: counts steps from the spikes in the gyroscope"
+icon: 👣
+ports: []
+bricks: []

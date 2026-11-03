@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step Counter</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f3f0;
+    --surface: #fcfcfb;
+    --border: #e4e3df;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --ink-3: #8a8984;
+    --grid: #ecebe7;
+    --track: #e9e8e4;
+    --still: #1baf7a;
+    --walk: #2a78d6;
+    --run: #eb6834;
+    --signal: #2a78d6;
+    --spike: #eb6834;
+    --other: #7c5cd6;
+    --band: rgba(27, 175, 122, 0.13);
+    --ok: #008300;
+    --warn: #b26b00;
+    --bad: #c73a39;
+    --button: #0b0b0b;
+    --button-ink: #fcfcfb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #121211;
+      --surface: #1a1a19;
+      --border: #2c2c2a;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --ink-3: #8a8984;
+      --grid: #262624;
+      --track: #2c2c2a;
+      --still: #199e70;
+      --walk: #3987e5;
+      --run: #d95926;
+      --signal: #4a95ee;
+      --spike: #f07a45;
+      --other: #a08af0;
+      --band: rgba(25, 158, 112, 0.2);
+      --ok: #3fb950;
+      --warn: #e0a030;
+      --bad: #e66767;
+      --button: #f0efec;
+      --button-ink: #121211;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --border: #2c2c2a;
+    --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8a8984;
+    --grid: #262624; --track: #2c2c2a;
+    --still: #199e70; --walk: #3987e5; --run: #d95926;
+    --signal: #4a95ee; --spike: #f07a45; --other: #a08af0; --band: rgba(25, 158, 112, 0.2);
+    --ok: #3fb950; --warn: #e0a030; --bad: #e66767;
+    --button: #f0efec; --button-ink: #121211;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 40px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+  .who { color: var(--ink-3); font-size: 14px; }
+  .conn {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+    padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--surface); font-size: 13px; color: var(--ink-2);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+  .conn[data-state="live"] .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .conn[data-state="paused"] .dot { background: var(--warn); }
+  .conn[data-state="lost"] .dot { background: var(--bad); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  .label { font-size: 13px; color: var(--ink-2); margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 0; font-weight: 600; }
+  .card-head { display: flex; align-items: baseline; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 10px; }
+  .card-head .hint { font-size: 13px; color: var(--ink-3); }
+
+  .hero { display: grid; grid-template-columns: 1fr auto; gap: 16px 24px; align-items: end; }
+  .steps { font-size: clamp(56px, 12vw, 96px); font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
+  .steps-unit { font-size: 18px; color: var(--ink-2); margin-left: 6px; font-weight: 500; letter-spacing: 0; }
+  .steps.bump { animation: bump .35s ease-out; }
+  @keyframes bump { 0% { color: var(--spike); } 100% { color: var(--ink); } }
+  .controls { display: flex; gap: 8px; }
+  button {
+    font: inherit; font-size: 14px; font-weight: 550; cursor: pointer;
+    padding: 9px 16px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink);
+  }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--button); color: var(--button-ink); border-color: var(--button); }
+  button.go { background: var(--still); color: #fff; border-color: var(--still); }
+  button.stop { background: var(--bad); color: #fff; border-color: var(--bad); }
+  button.danger-armed { background: var(--bad); color: #fff; border-color: var(--bad); }
+  button.small { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
+  button:focus-visible { outline: 2px solid var(--walk); outline-offset: 2px; }
+  .goal { grid-column: 1 / -1; }
+  .goal-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+  .goal-row label { display: inline-flex; align-items: center; gap: 4px; }
+  .goal-row input {
+    width: 72px; font: inherit; font-size: 13px; color: var(--ink); text-align: right;
+    background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 1px 4px;
+  }
+  .goal-row input:hover, .goal-row input:focus { border-color: var(--border); outline: none; }
+  .bar { height: 10px; border-radius: 999px; background: var(--track); overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--walk); border-radius: 999px; transition: width .4s; }
+
+  /* Live gyro graph */
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); margin-left: auto; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; }
+  .key-line { width: 16px; height: 2px; background: var(--signal); }
+  .key-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--spike); }
+  .key-hollow { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink-3); }
+  .key-dash { width: 16px; border-top: 2px dashed var(--ink-3); }
+  #gyro { position: relative; height: 280px; }
+  #gyro canvas { display: block; width: 100%; height: 100%; }
+  .gyro-foot { display: flex; gap: 8px 20px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--ink-3); }
+  .gyro-foot b { color: var(--ink); font-weight: 600; }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .tiles .card { margin-bottom: 16px; }
+  .big { font-size: 34px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.1; }
+  .unit { font-size: 15px; font-weight: 500; color: var(--ink-2); margin-left: 4px; letter-spacing: 0; }
+  .sub { font-size: 13px; color: var(--ink-3); margin-top: 4px; }
+  .unit-toggle { float: right; padding: 2px 8px; font-size: 12px; border-radius: 6px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 26px; font-weight: 650;
+    text-transform: capitalize; line-height: 1.1;
+  }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; background: var(--ink-3); }
+
+  /* Calibration */
+  .cal { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; }
+  .cal-step { font-size: 14px; color: var(--ink-2); margin: 0 0 12px; }
+  .cal-step b { color: var(--ink); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+  .seg button { border: 0; border-radius: 0; padding: 6px 14px; }
+  .seg button[aria-pressed="true"] { background: var(--button); color: var(--button-ink); }
+  .cal-live { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; margin: 4px 0 12px; }
+  .cal-live .unit { font-size: 15px; }
+  .cal-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; font-size: 14px; }
+  .cal-form input {
+    width: 72px; font: inherit; font-size: 20px; font-weight: 650; text-align: center;
+    color: var(--ink); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px;
+  }
+  .cal-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .walks { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; color: var(--ink-2); }
+  .walks li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--grid); }
+  .walks li span { flex: 1; }
+  .walks li b { color: var(--ink); font-weight: 600; }
+  .cal-result { font-size: 14px; color: var(--ink-2); }
+  .cal-result b { color: var(--ink); }
+  .warn-text { color: var(--warn); font-size: 13px; }
+
+  /* Cadence chart */
+  #chart { position: relative; height: 200px; }
+  #chart svg { display: block; width: 100%; height: 100%; }
+  .tip {
+    position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--ink-2); white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.12); display: none;
+  }
+  .tip b { color: var(--ink); font-weight: 600; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); font-size: 14px; text-align: center; padding: 0 16px; }
+
+  .split { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--track); margin: 4px 0 10px; }
+  .split div { height: 100%; transition: flex-grow .4s; }
+  .split-labels { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
+  .split-labels b { color: var(--ink); font-weight: 600; }
+
+  footer { font-size: 12px; color: var(--ink-3); }
+
+  @media (max-width: 720px) {
+    .tiles, .cal { grid-template-columns: 1fr; }
+    .hero { grid-template-columns: 1fr; }
+    .legend { margin-left: 0; }
+    #gyro { height: 220px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Step Counter</h1>
+    <span class="who" id="who"></span>
+    <span class="conn" id="conn" data-state="wait"><span class="dot"></span><span id="conn-text">Waiting for the board…</span></span>
+  </header>
+
+  <section class="card hero">
+    <div>
+      <p class="label">Steps</p>
+      <div><span class="steps num" id="steps">0</span><span class="steps-unit">steps</span></div>
+    </div>
+    <div class="controls">
+      <button id="pause">Pause</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div class="goal">
+      <div class="goal-row">
+        <span id="goal-text">0% of goal</span>
+        <label>Goal <input id="goal" class="num" type="number" min="100" step="500" value="10000"> steps</label>
+      </div>
+      <div class="bar"><div id="goal-bar"></div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Gyroscope, live</h2>
+      <span class="hint">Thigh swing, last 10 s</span>
+      <div class="legend">
+        <span><i class="key-line"></i>Swing (°/s)</span>
+        <span><i class="key-dot"></i>Tracker-leg step</span>
+        <span><i class="key-dot" style="background:var(--other)"></i>Other-leg step</span>
+        <span><i class="key-hollow"></i>Not counted</span>
+        <span><i class="key-dash"></i>Step levels</span>
+      </div>
+    </div>
+    <div id="gyro"><canvas id="gyro-canvas"></canvas><div class="empty" id="gyro-empty">Waiting for the board's gyroscope…</div></div>
+    <div class="gyro-foot" id="gyro-foot"></div>
+  </section>
+
+  <section class="tiles">
+    <div class="card">
+      <p class="label">Distance <button class="unit-toggle" id="units" title="Switch units">km</button></p>
+      <div class="big num" id="distance">0<span class="unit">m</span></div>
+      <div class="sub" id="stride">—</div>
+    </div>
+    <div class="card">
+      <p class="label">Cadence</p>
+      <div class="big num" id="cadence">0<span class="unit">steps/min</span></div>
+      <div class="sub">From the time between steps</div>
+    </div>
+    <div class="card">
+      <p class="label">Activity</p>
+      <div class="pill"><span class="swatch" id="swatch"></span><span id="activity">—</span></div>
+      <div class="sub">Running above 140 steps/min</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Calibrate: walk 5 m</h2>
+      <span class="hint">Mark out 5 m. Two or three walks is plenty.</span>
+    </div>
+    <div class="cal">
+      <div id="cal-panel"></div>
+      <div>
+        <p class="label">Saved walks</p>
+        <ul class="walks" id="walks"></ul>
+        <div class="cal-result" id="cal-result"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Cadence, last 5 minutes</h2>
+      <div class="legend">
+        <span><i class="key-dot" style="background:var(--walk)"></i>Walk</span>
+        <span><i class="key-dot" style="background:var(--run)"></i>Run</span>
+      </div>
+    </div>
+    <div id="chart"><div class="empty" id="empty">Start moving to see your cadence here</div><div class="tip" id="tip"></div></div>
+  </section>
+
+  <section class="card">
+    <p class="label">Time in each activity</p>
+    <div class="split" id="split"></div>
+    <div class="split-labels" id="split-labels"></div>
+  </section>
+
+  <footer id="board">Board: no word yet.</footer>
+</main>
+
+<script>
+const LABELS = ["still", "walk", "run"];
+const STEP_S = 0.5;
+const WINDOW_S = 5 * 60;
+const GYRO_S = 10;             // seconds of gyro on screen
+const CAL_METERS = 5;
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+let history = [];          // results from the board, oldest first (for the 5 min chart)
+let last = null;           // newest live message (totals)
+let lastAt = 0;
+let mode = null;           // "count" | "idle" | "record" from the board's status
+let units = store.get("units", "metric");
+let goal = Number(store.get("goal", 10000)) || 10000;
+$("goal").value = goal;
+
+const fmt = n => Math.round(n).toLocaleString();
+const clock = s => {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+};
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function distanceText(m) {
+  if (units === "imperial") {
+    const mi = m / 1609.344;
+    return mi < 0.1 ? [fmt(m * 3.28084), "ft"] : [mi.toFixed(2), "mi"];
+  }
+  return m < 1000 ? [m < 10 ? m.toFixed(1) : fmt(m), "m"] : [(m / 1000).toFixed(2), "km"];
+}
+
+// --- Totals ------------------------------------------------------------------
+let shownSteps = null;
+
+function render() {
+  const r = last || { steps: 0, distance_m: 0, cadence_spm: 0, activity: null, seconds: {} };
+  const el = $("steps");
+  if (shownSteps !== null && r.steps > shownSteps) {
+    el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
+  }
+  shownSteps = r.steps;
+  el.textContent = fmt(r.steps);
+  const pct = Math.min(100, (r.steps / goal) * 100);
+  $("goal-bar").style.width = pct + "%";
+  $("goal-text").textContent = r.steps >= goal ? `Goal reached: ${fmt(r.steps)} steps` : `${pct.toFixed(0)}% of goal · ${fmt(goal - r.steps)} to go`;
+
+  const [d, du] = distanceText(r.distance_m);
+  $("distance").innerHTML = `${d}<span class="unit">${du}</span>`;
+  $("units").textContent = units === "metric" ? "mi" : "km";
+  const len = r.step_length_m;
+  $("stride").textContent = len
+    ? `${len.walk.toFixed(2)} m per step walking${cal.calibration ? " (from your 5 m walks)" : " (default; calibrate below)"}`
+    : "—";
+
+  $("cadence").innerHTML = `${fmt(r.cadence_spm)}<span class="unit">steps/min</span>`;
+
+  const act = r.activity;
+  $("activity").textContent = act || "—";
+  $("swatch").style.background = act ? `var(--${act})` : "var(--ink-3)";
+
+  const secs = r.seconds || {};
+  const total = LABELS.reduce((a, l) => a + (secs[l] || 0), 0);
+  $("split").innerHTML = total ? LABELS.filter(l => secs[l]).map(l =>
+    `<div style="flex-grow:${secs[l]};background:var(--${l})" title="${l} ${clock(secs[l])}"></div>`).join("") : "";
+  $("split-labels").innerHTML = LABELS.map(l =>
+    `<span><b class="num">${clock(secs[l] || 0)}</b> ${l}${total ? ` (${Math.round(100 * (secs[l] || 0) / total)}%)` : ""}</span>`).join("");
+
+  const counted = spikeList().filter(e => e.counted && boardNow - e.t <= GYRO_S).length;
+  $("gyro-foot").innerHTML =
+    `<span>Spike up = a step with the tracker leg · dip down = a step with the other leg · each is <b>1 step</b></span>` +
+    `<span>A step only counts when another follows within 2 s (so fidgeting doesn't count)</span>` +
+    `<span><b class="num">${counted}</b> step${counted === 1 ? "" : "s"} on screen</span>`;
+}
+
+// --- Live gyro graph (canvas, redrawn every frame) ---------------------------
+const sig = { t: [], s: [] };      // board time (s), thigh swing (deg/s)
+const spikes = new Map();          // board time -> step {t, v, leg, counted, repeat}
+let boardNow = null, recvAt = 0, threshold = 80, dip = 35;
+let yMax = 150;
+const canvas = $("gyro-canvas"), ctx = canvas.getContext("2d");
+let colors = {};
+const readColors = () => {
+  colors = Object.fromEntries(["--signal", "--spike", "--other", "--ink-3", "--ink-2", "--grid", "--band", "--surface", "--ink"]
+    .map(n => [n, cssVar(n)]));
+};
+readColors();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { readColors(); drawChart(); });
+
+function spikeList() {
+  return [...spikes.values()].sort((a, b) => a.t - b.t);
+}
+
+function onLive(m) {
+  for (let i = 0; i < m.t.length; i++) { sig.t.push(m.t[i]); sig.s.push(m.s[i]); }
+  // A jump back in time means the board restarted: start the graph over.
+  if (boardNow !== null && m.now < boardNow - 5) { sig.t.length = 0; sig.s.length = 0; spikes.clear(); }
+  for (const sp of m.spikes) spikes.set(sp.t, sp);
+  boardNow = m.now;
+  recvAt = performance.now();
+  threshold = m.threshold;
+  dip = m.dip ?? dip;
+  const cutoff = m.now - GYRO_S - 2;
+  let k = 0;
+  while (k < sig.t.length && sig.t[k] < cutoff) k++;
+  if (k) { sig.t.splice(0, k); sig.s.splice(0, k); }
+  for (const t of spikes.keys()) if (t < m.now - 120) spikes.delete(t);
+  last = m;
+  lastAt = Date.now();
+  if (mode !== "record") mode = "count";
+  calTick();
+  render();
+}
+
+function drawGyro() {
+  requestAnimationFrame(drawGyro);
+  const W = canvas.clientWidth, H = canvas.clientHeight, dpr = devicePixelRatio || 1;
+  if (canvas.width !== W * dpr || canvas.height !== H * dpr) { canvas.width = W * dpr; canvas.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  $("gyro-empty").style.display = sig.t.length ? "none" : "grid";
+  if (!sig.t.length) return;
+
+  // Scroll smoothly between messages, but never past the newest sample.
+  const now = boardNow + Math.min(0.15, (performance.now() - recvAt) / 1000) - 0.15;
+  const pad = { l: 44, r: 10, t: 14, b: 22 };
+  const x = t => pad.l + (t - (now - GYRO_S)) / GYRO_S * (W - pad.l - pad.r);
+  // The y range grows at once to fit the biggest swing on screen, and shrinks slowly.
+  let peak = threshold * 1.6;
+  for (let i = 0; i < sig.s.length; i++) if (sig.t[i] > now - GYRO_S) peak = Math.max(peak, Math.abs(sig.s[i]) * 1.2);
+  yMax = peak > yMax ? peak : yMax + (peak - yMax) * 0.03;
+  const y = v => pad.t + (1 - (v + yMax) / (2 * yMax)) * (H - pad.t - pad.b);
+
+  ctx.font = "11px -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.lineWidth = 1;
+
+  // The 5 m calibration walk, shaded.
+  if (calState.start !== null) {
+    const a = Math.max(pad.l, x(calState.start)), b = Math.min(W - pad.r, x(calState.stop ?? now));
+    if (b > a) { ctx.fillStyle = colors["--band"]; ctx.fillRect(a, pad.t, b - a, H - pad.t - pad.b); }
+  }
+
+  // Grid: 0 and a few round values.
+  const stepV = yMax > 400 ? 200 : yMax > 200 ? 100 : 50;
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let v = -Math.floor(yMax / stepV) * stepV; v <= yMax; v += stepV) {
+    ctx.strokeStyle = colors["--grid"];
+    ctx.beginPath(); ctx.moveTo(pad.l, y(v)); ctx.lineTo(W - pad.r, y(v)); ctx.stroke();
+    ctx.fillStyle = colors["--ink-3"];
+    ctx.fillText(v === 0 ? "0" : String(v), pad.l - 8, y(v));
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  for (let s = 0; s <= GYRO_S; s += 2) {
+    ctx.fillText(s === 0 ? "now" : `-${s} s`, Math.max(pad.l + 12, Math.min(W - pad.r - 12, x(now - s))), H - 6);
+  }
+
+  // Step levels: a spike above the top line, a dip below the bottom one.
+  ctx.save();
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = colors["--ink-3"];
+  for (const v of [threshold, -dip]) {
+    ctx.beginPath(); ctx.moveTo(pad.l, y(v)); ctx.lineTo(W - pad.r, y(v)); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.fillStyle = colors["--ink-3"]; ctx.textAlign = "right";
+  ctx.fillText(`tracker leg ${threshold}°/s`, W - pad.r - 4, y(threshold) - 5);
+  ctx.fillText(`other leg −${dip}°/s`, W - pad.r - 4, y(-dip) + 14);
+
+  // The signal.
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pad.l, 0, W - pad.l - pad.r, H); ctx.clip();
+  ctx.strokeStyle = colors["--signal"]; ctx.lineWidth = 2; ctx.lineJoin = "round";
+  ctx.beginPath();
+  let started = false;
+  for (let i = 0; i < sig.t.length; i++) {
+    if (sig.t[i] < now - GYRO_S - 0.1) continue;
+    const gap = i > 0 && sig.t[i] - sig.t[i - 1] > 0.3;
+    if (!started || gap) { ctx.moveTo(x(sig.t[i]), y(sig.s[i])); started = true; }
+    else ctx.lineTo(x(sig.t[i]), y(sig.s[i]));
+  }
+  ctx.stroke();
+
+  // The steps: filled and labelled when they counted, hollow when not.
+  ctx.textAlign = "center";
+  ctx.font = "600 12px -apple-system, BlinkMacSystemFont, sans-serif";
+  for (const sp of spikes.values()) {
+    if (sp.t < now - GYRO_S - 0.5 || sp.t > now + 0.2) continue;
+    const px = x(sp.t), py = y(sp.v), up = sp.leg !== "other";
+    ctx.beginPath(); ctx.arc(px, py, sp.counted ? 6 : 5, 0, 2 * Math.PI);
+    if (sp.counted) {
+      ctx.fillStyle = colors[up ? "--spike" : "--other"]; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = colors["--surface"]; ctx.stroke();
+      ctx.fillStyle = colors["--ink"];
+      ctx.fillText("+1", px, up ? Math.max(12, py - 11) : Math.min(H - pad.b - 4, py + 20));
+    } else {
+      ctx.lineWidth = 2; ctx.strokeStyle = colors["--ink-3"]; ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+requestAnimationFrame(drawGyro);
+
+// --- Calibration: walk 5 m ---------------------------------------------------
+const calState = { kind: "walk", phase: "ready", start: null, stop: null, spikes: 0 };
+let cal = { walks: [], calibration: null, person: "" };
+
+function stepsBetween(a, b) {
+  return spikeList().filter(s => !s.repeat && s.t >= a && s.t <= b).length;
+}
+
+function calTick() {
+  if (calState.phase === "walking") {
+    calState.spikes = stepsBetween(calState.start, boardNow);
+    const n = $("cal-count");
+    if (n) n.textContent = calState.spikes;
+  } else if (calState.phase === "settling" && boardNow >= calState.stop + 0.6) {
+    // Wait a moment after Stop so the last spike has finished.
+    calState.spikes = stepsBetween(calState.start, calState.stop + 0.6);
+    calState.phase = "count";
+    renderCal();
+  }
+}
+
+function renderCal() {
+  const p = $("cal-panel"), s = calState;
+  const kinds = `<div class="seg" role="group" aria-label="Walk or run">` +
+    ["walk", "run"].map(k => `<button data-kind="${k}" aria-pressed="${s.kind === k}">${k === "walk" ? "Walk" : "Run"} 5 m</button>`).join("") + `</div>`;
+  const online = boardNow !== null && Date.now() - lastAt < 3000 && mode === "count";
+  if (s.phase === "ready") {
+    p.innerHTML = kinds +
+      `<p class="cal-step"><b>1.</b> Stand at the start of your 5 m, still.<br><b>2.</b> Press Start, ${s.kind} the 5 m counting your steps, and stop at the end.<br><b>3.</b> Press Stop.</p>` +
+      `<button class="go" id="cal-start" ${online ? "" : "disabled"}>Start</button>` +
+      (online ? "" : `<p class="warn-text">The board needs to be live and counting first.</p>`);
+    p.querySelectorAll("[data-kind]").forEach(b => b.onclick = () => { s.kind = b.dataset.kind; renderCal(); });
+    $("cal-start").onclick = () => {
+      Object.assign(s, { phase: "walking", start: boardNow, stop: null, spikes: 0 });
+      renderCal();
+    };
+  } else if (s.phase === "walking" || s.phase === "settling") {
+    p.innerHTML = `<p class="cal-step">${s.kind === "walk" ? "Walk" : "Run"} the 5 m now, counting your steps. The green band on the graph is this walk.</p>` +
+      `<div class="cal-live num"><span id="cal-count">${s.spikes}</span><span class="unit">steps so far</span></div>` +
+      `<div class="cal-row"><button class="stop" id="cal-stop" ${s.phase === "settling" ? "disabled" : ""}>Stop</button>` +
+      `<button id="cal-cancel">Cancel</button></div>`;
+    $("cal-stop").onclick = () => { s.stop = boardNow; s.phase = "settling"; renderCal(); };
+    $("cal-cancel").onclick = () => { Object.assign(s, { phase: "ready", start: null, stop: null }); renderCal(); };
+  } else if (s.phase === "count") {
+    const guess = s.spikes;
+    p.innerHTML = `<p class="cal-step">The board counted <b>${s.spikes} step${s.spikes === 1 ? "" : "s"}</b> over your 5 m. Fix it if you counted differently.</p>` +
+      `<div class="cal-form"><label for="cal-steps">Steps you counted</label>` +
+      `<input id="cal-steps" class="num" type="number" min="1" max="60" value="${guess || ""}"></div>` +
+      (s.spikes ? "" : `<p class="warn-text">No steps: is the sensor strapped on and the board live? You can still save your count.</p>`) +
+      `<div class="cal-row"><button class="primary" id="cal-save">Save this walk</button><button id="cal-discard">Discard</button></div>`;
+    const input = $("cal-steps");
+    input.focus(); input.select();
+    const save = async () => {
+      const steps = Math.round(Number(input.value));
+      if (!(steps >= 1)) { input.focus(); return; }
+      await fetch("/calibrate", { method: "POST", body: JSON.stringify({ add: { kind: s.kind, meters: CAL_METERS, steps, detected: s.spikes } }) });
+      Object.assign(s, { phase: "ready", start: null, stop: null });
+      renderCal();
+    };
+    $("cal-save").onclick = save;
+    input.onkeydown = e => { if (e.key === "Enter") save(); };
+    $("cal-discard").onclick = () => { Object.assign(s, { phase: "ready", start: null, stop: null }); renderCal(); };
+  }
+}
+
+function renderWalks() {
+  $("who").textContent = cal.person ? `· ${cal.person}` : "";
+  $("walks").innerHTML = cal.walks.length ? cal.walks.map((w, i) =>
+    `<li><span>${w.kind === "walk" ? "Walked" : "Ran"} ${w.meters} m: <b class="num">${w.steps}</b> steps` +
+    (w.detected !== undefined ? ` · board counted <b class="num">${w.detected}</b>` : "") + `</span>` +
+    `<button class="small" data-remove="${i}" aria-label="Remove walk ${i + 1}">Remove</button></li>`).join("")
+    : `<li><span>None yet. Until you calibrate, it uses 0.70 m per step.</span></li>`;
+  $("walks").querySelectorAll("[data-remove]").forEach(b => b.onclick = () =>
+    fetch("/calibrate", { method: "POST", body: JSON.stringify({ remove: Number(b.dataset.remove) }) }));
+  const c = cal.calibration;
+  const checked = cal.walks.filter(w => w.detected !== undefined);
+  const off = checked.reduce((a, w) => a + Math.abs(w.detected - w.steps), 0);
+  $("cal-result").innerHTML = c
+    ? `Using <b>${c.step_length_m.walk.toFixed(2)} m</b> per step walking and <b>${c.step_length_m.run.toFixed(2)} m</b> running.` +
+      (checked.length ? `<br>The board's count was off by <b class="num">${(off / checked.length).toFixed(1)}</b> step${off === checked.length ? "" : "s"} per walk on average.` : "")
+    : "";
+}
+
+// --- Chart: cadence over the last 5 minutes, colored by activity -----------
+const chart = $("chart");
+let geom = null;
+
+function drawChart() {
+  chart.querySelector("svg")?.remove();
+  const now = history.length ? history[history.length - 1].t : Date.now() / 1000;
+  const pts = history.filter(h => h.t >= now - WINDOW_S);
+  $("empty").style.display = pts.some(p => p.cadence_spm > 0) ? "none" : "grid";
+  if (pts.length < 2) { geom = null; return; }
+
+  const W = chart.clientWidth, H = chart.clientHeight;
+  const pad = { l: 40, r: 8, t: 8, b: 26 };
+  const maxY = Math.max(60, ...pts.map(p => p.cadence_spm));
+  const top = Math.ceil(maxY / 40) * 40;
+  const x = t => pad.l + (t - (now - WINDOW_S)) / WINDOW_S * (W - pad.l - pad.r);
+  const y = v => H - pad.b - v / top * (H - pad.t - pad.b);
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  let out = "";
+  for (let v = 0; v <= top; v += top / 4) {
+    out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" />`;
+    out += `<text x="${pad.l - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink-3)">${v}</text>`;
+  }
+  for (let m = 0; m <= 5; m++) {
+    const tx = x(now - m * 60);
+    out += `<text x="${tx}" y="${H - 6}" text-anchor="${m === 0 ? "end" : m === 5 ? "start" : "middle"}" font-size="11" fill="var(--ink-3)">${m === 0 ? "now" : `-${m} min`}</text>`;
+  }
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    if (b.t - a.t > 3) continue;                      // a gap: the board was paused or offline
+    out += `<line x1="${x(a.t)}" y1="${y(a.cadence_spm)}" x2="${x(b.t)}" y2="${y(b.cadence_spm)}" stroke="var(--${b.activity})" stroke-width="2" stroke-linecap="round" />`;
+  }
+  out += `<line id="cross" y1="${pad.t}" y2="${H - pad.b}" stroke="var(--ink-3)" stroke-dasharray="3 3" visibility="hidden" />`;
+  out += `<circle id="hover-dot" r="4.5" stroke="var(--surface)" stroke-width="2" visibility="hidden" />`;
+  svg.innerHTML = out;
+  chart.prepend(svg);
+  geom = { pts, x, y, pad, W };
+}
+
+chart.addEventListener("mousemove", e => {
+  if (!geom) return;
+  const rect = chart.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  let best = geom.pts[0];
+  for (const p of geom.pts) if (Math.abs(geom.x(p.t) - mx) < Math.abs(geom.x(best.t) - mx)) best = p;
+  const px = geom.x(best.t), py = geom.y(best.cadence_spm);
+  const svg = chart.querySelector("svg");
+  const cross = svg.querySelector("#cross"), dot = svg.querySelector("#hover-dot");
+  cross.setAttribute("x1", px); cross.setAttribute("x2", px); cross.setAttribute("visibility", "visible");
+  dot.setAttribute("cx", px); dot.setAttribute("cy", py); dot.setAttribute("fill", `var(--${best.activity})`);
+  dot.setAttribute("visibility", "visible");
+  const tip = $("tip");
+  const when = new Date(best.t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  tip.innerHTML = `${when}<br><b class="num">${fmt(best.cadence_spm)}</b> steps/min · ${best.activity}<br><b class="num">${fmt(best.steps)}</b> steps total`;
+  tip.style.display = "block";
+  const left = px + 12 + tip.offsetWidth > geom.W ? px - 12 - tip.offsetWidth : px + 12;
+  tip.style.left = left + "px";
+  tip.style.top = Math.max(0, py - tip.offsetHeight / 2) + "px";
+});
+chart.addEventListener("mouseleave", () => {
+  $("tip").style.display = "none";
+  const svg = chart.querySelector("svg");
+  svg?.querySelector("#cross").setAttribute("visibility", "hidden");
+  svg?.querySelector("#hover-dot").setAttribute("visibility", "hidden");
+});
+window.addEventListener("resize", drawChart);
+
+// --- Connection status -------------------------------------------------------
+let wasOnline = null;
+function setConn() {
+  const conn = $("conn"), text = $("conn-text");
+  const age = (Date.now() - lastAt) / 1000;
+  if (mode === "idle") { conn.dataset.state = "paused"; text.textContent = "Paused"; }
+  else if (mode === "record") { conn.dataset.state = "paused"; text.textContent = "Recording training data"; }
+  else if (lastAt && age < 3) { conn.dataset.state = "live"; text.textContent = "Live"; }
+  else if (lastAt) { conn.dataset.state = "lost"; text.textContent = `No signal for ${clock(age)}`; }
+  else { conn.dataset.state = "wait"; text.textContent = "Waiting for the board…"; }
+  $("pause").textContent = mode === "idle" ? "Resume" : "Pause";
+  $("pause").classList.toggle("primary", mode === "idle");
+  // Enable or disable the calibration Start button as the board comes and goes.
+  const online = conn.dataset.state === "live";
+  if (online !== wasOnline && calState.phase === "ready") renderCal();
+  wasOnline = online;
+}
+setInterval(setConn, 1000);
+
+function onResult(r) {
+  history.push(r);
+  const cutoff = r.t - WINDOW_S - 5;
+  while (history.length && history[0].t < cutoff) history.shift();
+  drawChart();
+}
+
+function onStatus(s) {
+  $("board").textContent = "Board: " + s.text;
+  const m = /mode=(\w+)/.exec(s.text);
+  if (m && !s.old) mode = m[1];
+  setConn();
+}
+
+const events = new EventSource("/events");
+events.onmessage = e => {
+  const msg = JSON.parse(e.data);
+  if (msg.type === "history") msg.items.forEach(i => onResult(JSON.parse(i)));
+  else if (msg.type === "status") onStatus(msg);
+  else if (msg.type === "result") onResult(msg);
+  else if (msg.type === "live") onLive(msg);
+  else if (msg.type === "calibration") { cal = msg; renderWalks(); render(); }
+};
+events.onerror = () => { $("board").textContent = "Lost the connection to dashboard.py. Is it still running?"; };
+
+// --- Controls ----------------------------------------------------------------
+const send = cmd => fetch("/cmd", { method: "POST", body: cmd });
+
+$("pause").onclick = () => { mode = mode === "idle" ? "count" : "idle"; send(mode); setConn(); };
+
+let armed = null;
+$("reset").onclick = () => {
+  const b = $("reset");
+  if (!armed) {
+    b.textContent = "Click again to reset";
+    b.classList.add("danger-armed");
+    armed = setTimeout(() => { armed = null; b.textContent = "Reset"; b.classList.remove("danger-armed"); }, 3000);
+    return;
+  }
+  clearTimeout(armed); armed = null;
+  b.textContent = "Reset"; b.classList.remove("danger-armed");
+  send("reset");
+};
+
+$("units").onclick = () => { units = units === "metric" ? "imperial" : "metric"; store.set("units", units); render(); };
+$("goal").onchange = () => { goal = Math.max(100, Number($("goal").value) || 10000); store.set("goal", goal); render(); };
+
+render();
+renderCal();
+renderWalks();
+</script>
+</body>
+</html>

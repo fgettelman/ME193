@@ -1,0 +1,401 @@
+{
+ "sensor": {
+  "recording": "still_fiona_20261026-162456",
+  "gyro_sd_dps": [
+   0.852,
+   0.295,
+   0.153
+  ],
+  "accel_sd_g": [
+   0.0022,
+   0.0063,
+   0.0045
+  ],
+  "gyro_resolution_dps": 0.0305,
+  "swing_sd_dps": 0.206,
+  "swing_max_dps": 1.68,
+  "spike_level_in_sd": 388.0,
+  "dip_level_in_sd": 170.0
+ },
+ "timing": {
+  "samples": 36188,
+  "dt_mean_ms": 10.0,
+  "dt_sd_ms": 0.816,
+  "gaps": 6,
+  "gap_s": 43.6,
+  "rate_hz": 100.0
+ },
+ "step_count": {
+  "walks": [
+   {
+    "kind": "walk",
+    "you": 8,
+    "board": 9,
+    "error": 1
+   },
+   {
+    "kind": "walk",
+    "you": 8,
+    "board": 8,
+    "error": 0
+   },
+   {
+    "kind": "walk",
+    "you": 7,
+    "board": 7,
+    "error": 0
+   },
+   {
+    "kind": "walk",
+    "you": 7,
+    "board": 8,
+    "error": 1
+   },
+   {
+    "kind": "walk",
+    "you": 7,
+    "board": 11,
+    "error": 4
+   },
+   {
+    "kind": "walk",
+    "you": 7,
+    "board": 7,
+    "error": 0
+   },
+   {
+    "kind": "run",
+    "you": 5,
+    "board": 8,
+    "error": 3
+   },
+   {
+    "kind": "run",
+    "you": 5,
+    "board": 5,
+    "error": 0
+   },
+   {
+    "kind": "run",
+    "you": 6,
+    "board": 6,
+    "error": 0
+   }
+  ],
+  "exact": 5,
+  "bias_steps": {
+   "n": 9,
+   "mean": 1.0,
+   "sd": 1.5,
+   "se": 0.5,
+   "ci95": 1.155
+  },
+  "abs_error_steps": 1.0,
+  "median_error_steps": 0.0,
+  "rel_error_mean": 0.1599206349206349,
+  "rel_error_ci95": [
+   0.027777777777777776,
+   0.33015873015873015
+  ],
+  "never_under": true
+ },
+ "step_length": {
+  "walk": {
+   "per_walk_m": [
+    0.625,
+    0.625,
+    0.714,
+    0.714,
+    0.714,
+    0.714
+   ],
+   "pooled_m": 0.6818,
+   "typeA": {
+    "n": 6,
+    "mean": 0.6845238095238096,
+    "sd": 0.046106944597707346,
+    "se": 0.01882308131052607,
+    "ci95": 0.04837531896805199
+   },
+   "typeB_one_walk_rel": 0.055670221426890425,
+   "typeB_steps": 0.4082482904638631
+  },
+  "run": {
+   "per_walk_m": [
+    1.0,
+    1.0,
+    0.833
+   ],
+   "pooled_m": 0.9375,
+   "typeA": {
+    "n": 3,
+    "mean": 0.9444444444444445,
+    "sd": 0.0962250448649376,
+    "se": 0.055555555555555546,
+    "ci95": 0.23888888888888885
+   },
+   "typeB_one_walk_rel": 0.07654655446197434,
+   "typeB_steps": 0.4082482904638631
+  }
+ },
+ "distance_check": [
+  {
+   "recording": "walk_fiona_20261102-143506",
+   "true_m": 50.0,
+   "steps": 72.0,
+   "distance_m": 49.09,
+   "error_pct": -1.82,
+   "u_from_step_length_m": 1.36,
+   "you_counted": 38
+  },
+  {
+   "recording": "walk_fiona_20261102-143806",
+   "true_m": 50.0,
+   "steps": 76.0,
+   "distance_m": 51.82,
+   "error_pct": 3.63,
+   "u_from_step_length_m": 1.43,
+   "you_counted": 39
+  }
+ ],
+ "sensitivity": [
+  {
+   "level": "SPIKE_DPS",
+   "value": 60,
+   "mean_change_pct": 10.17,
+   "max_change_pct": 38.46,
+   "still_steps": 25.0
+  },
+  {
+   "level": "SPIKE_DPS",
+   "value": 70,
+   "mean_change_pct": 3.27,
+   "max_change_pct": 10.26,
+   "still_steps": 25.0
+  },
+  {
+   "level": "SPIKE_DPS",
+   "value": 80,
+   "mean_change_pct": 0.0,
+   "max_change_pct": 0.0,
+   "still_steps": 20.0
+  },
+  {
+   "level": "SPIKE_DPS",
+   "value": 90,
+   "mean_change_pct": 0.81,
+   "max_change_pct": 4.76,
+   "still_steps": 20.0
+  },
+  {
+   "level": "SPIKE_DPS",
+   "value": 100,
+   "mean_change_pct": 2.04,
+   "max_change_pct": 4.88,
+   "still_steps": 17.0
+  },
+  {
+   "level": "SPIKE_DPS",
+   "value": 120,
+   "mean_change_pct": 3.63,
+   "max_change_pct": 7.69,
+   "still_steps": 2.0
+  },
+  {
+   "level": "DIP_DPS",
+   "value": 20,
+   "mean_change_pct": 1.92,
+   "max_change_pct": 7.69,
+   "still_steps": 22.0
+  },
+  {
+   "level": "DIP_DPS",
+   "value": 25,
+   "mean_change_pct": 1.06,
+   "max_change_pct": 7.14,
+   "still_steps": 20.0
+  },
+  {
+   "level": "DIP_DPS",
+   "value": 35,
+   "mean_change_pct": 0.0,
+   "max_change_pct": 0.0,
+   "still_steps": 20.0
+  },
+  {
+   "level": "DIP_DPS",
+   "value": 45,
+   "mean_change_pct": 0.76,
+   "max_change_pct": 2.56,
+   "still_steps": 20.0
+  },
+  {
+   "level": "DIP_DPS",
+   "value": 60,
+   "mean_change_pct": 1.45,
+   "max_change_pct": 4.82,
+   "still_steps": 18.0
+  }
+ ],
+ "spike_counter_on_recordings": [
+  {
+   "name": "run_fiona_20261026-162702",
+   "steps": 78.0,
+   "labels": 74.0
+  },
+  {
+   "name": "run_fiona_20261026-163127",
+   "steps": 83.0,
+   "labels": 78.0
+  },
+  {
+   "name": "run_fiona_20261026-163815",
+   "steps": 42.0,
+   "labels": 40.0
+  },
+  {
+   "name": "run_fiona_20261102-143920",
+   "steps": 23.0,
+   "labels": 28.0
+  },
+  {
+   "name": "still_fiona_20261026-162456",
+   "steps": 0.0,
+   "labels": 0.0
+  },
+  {
+   "name": "still_fiona_20261026-162920",
+   "steps": 0.0,
+   "labels": 0.0
+  },
+  {
+   "name": "still_fiona_20261026-163355",
+   "steps": 20.0,
+   "labels": 0.0
+  },
+  {
+   "name": "walk_fiona_20261026-162606",
+   "steps": 41.0,
+   "labels": 44.0
+  },
+  {
+   "name": "walk_fiona_20261026-163035",
+   "steps": 53.0,
+   "labels": 52.0
+  },
+  {
+   "name": "walk_fiona_20261026-163449",
+   "steps": 59.0,
+   "labels": 60.0
+  },
+  {
+   "name": "walk_fiona_20261102-143506",
+   "steps": 72.0,
+   "labels": 72.0
+  },
+  {
+   "name": "walk_fiona_20261102-143806",
+   "steps": 76.0,
+   "labels": 78.0
+  }
+ ],
+ "neural_net": {
+  "leave_one_out": [
+   {
+    "name": "run_fiona_20261026-162702",
+    "label": "run",
+    "net": 53.78,
+    "labels": 56.53
+   },
+   {
+    "name": "run_fiona_20261026-163127",
+    "label": "run",
+    "net": 55.58,
+    "labels": 59.74
+   },
+   {
+    "name": "run_fiona_20261026-163815",
+    "label": "run",
+    "net": 21.39,
+    "labels": 21.04
+   },
+   {
+    "name": "run_fiona_20261102-143920",
+    "label": "run",
+    "net": 7.21,
+    "labels": 7.41
+   },
+   {
+    "name": "still_fiona_20261026-162456",
+    "label": "still",
+    "net": 0.0,
+    "labels": 0.0
+   },
+   {
+    "name": "still_fiona_20261026-162920",
+    "label": "still",
+    "net": 0.0,
+    "labels": 0.0
+   },
+   {
+    "name": "still_fiona_20261026-163355",
+    "label": "still",
+    "net": 7.04,
+    "labels": 0.0
+   },
+   {
+    "name": "walk_fiona_20261026-162606",
+    "label": "walk",
+    "net": 31.92,
+    "labels": 33.77
+   },
+   {
+    "name": "walk_fiona_20261026-163035",
+    "label": "walk",
+    "net": 39.27,
+    "labels": 39.88
+   },
+   {
+    "name": "walk_fiona_20261026-163449",
+    "label": "walk",
+    "net": 45.05,
+    "labels": 46.01
+   },
+   {
+    "name": "walk_fiona_20261102-143506",
+    "label": "walk",
+    "net": 79.1,
+    "labels": 71.85
+   },
+   {
+    "name": "walk_fiona_20261102-143806",
+    "label": "walk",
+    "net": 75.17,
+    "labels": 76.79
+   }
+  ],
+  "rel_error": {
+   "n": 9,
+   "mean": -0.015530277398450802,
+   "sd": 0.050432243784183525,
+   "se": 0.016810747928061174,
+   "ci95": 0.038832827713821315
+  },
+  "abs_rel_error_mean": 0.04165019817176071,
+  "seed_test": {
+   "recording": "walk_fiona_20261102-143806",
+   "steps": [
+    77.02,
+    76.2,
+    77.59,
+    75.62,
+    78.5
+   ],
+   "n": 5,
+   "mean": 76.986,
+   "sd": 1.1337901040316045,
+   "se": 0.5070463489662452,
+   "ci95": 1.4095888501261618
+  }
+ }
+}
