@@ -1,0 +1,58 @@
+{
+ "fiona": [
+  {
+   "kind": "walk",
+   "meters": 5.0,
+   "steps": 8,
+   "detected": 9
+  },
+  {
+   "kind": "walk",
+   "meters": 5.0,
+   "steps": 8,
+   "detected": 8
+  },
+  {
+   "kind": "walk",
+   "meters": 5.0,
+   "steps": 7,
+   "detected": 7
+  },
+  {
+   "kind": "walk",
+   "meters": 5.0,
+   "steps": 7,
+   "detected": 8
+  },
+  {
+   "kind": "walk",
+   "meters": 5.0,
+   "steps": 7,
+   "detected": 11
+  },
+  {
+   "kind": "walk",
+   "meters": 5.0,
+   "steps": 7,
+   "detected": 7
+  },
+  {
+   "kind": "run",
+   "meters": 5.0,
+   "steps": 5,
+   "detected": 8
+  },
+  {
+   "kind": "run",
+   "meters": 5.0,
+   "steps": 5,
+   "detected": 5
+  },
+  {
+   "kind": "run",
+   "meters": 5.0,
+   "steps": 6,
+   "detected": 6
+  }
+ ]
+}
