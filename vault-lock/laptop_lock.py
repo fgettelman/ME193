@@ -63,8 +63,8 @@ def camera_banner(view, d, now, flash):
     if flash and now < flash[1]:
         big, sub, colour = flash[0], flash[2], GREEN
     elif d.mode == L.LOCKED:
-        big = "Press SPACE to start"
-        sub = f"Then show {S.CODE_LENGTH} numbers with your fingers, holding each still for {S.HOLD_S:.1f} s"
+        big = "Press the button to start"
+        sub = f"(or SPACE)  Then show {S.CODE_LENGTH} numbers, holding each still for {S.HOLD_S:.1f} s"
         colour = YELLOW if int(now * 1.5) % 2 else WHITE          # gently blinking
     elif d.mode == L.SCANNING:
         big = f"Show number {n + 1} of {S.CODE_LENGTH}"
@@ -78,9 +78,9 @@ def camera_banner(view, d, now, flash):
             sub = f"Fingers in the green box, hold still {S.HOLD_S:.1f} s"
         sub += f"   ({d.seconds} s left)" if d.hold == 0 else ""
     elif d.mode == L.UNLOCKED:
-        big, sub, colour = "OPEN!", f"Press SPACE to lock again (locks itself in {d.seconds} s)", GREEN
+        big, sub, colour = "OPEN!", f"Press the button to lock again (locks itself in {d.seconds} s)", GREEN
     elif d.mode == L.DENIED:
-        big, sub, colour = "Wrong code", f"Still locked. Try {d.fails} of {S.MAX_TRIES}: press SPACE to try again", RED
+        big, sub, colour = "Wrong code", f"Still locked. Try {d.fails} of {S.MAX_TRIES}: press the button to try again", RED
     else:
         big, sub, colour = f"Locked out: wait {d.seconds} s", "Too many wrong codes. The button does nothing until then.", RED
 
@@ -97,7 +97,7 @@ def instructions(d, seen_k, seen_p):
     """Two lines telling the user what to do now."""
     n = len(d.digits)
     if d.mode == L.LOCKED:
-        return "Press SPACE (the safe's button) to start,", f"then hold each number still for {S.HOLD_S:.1f} s."
+        return "Press the button (or SPACE) to start,", f"then hold each number still for {S.HOLD_S:.1f} s."
     if d.mode == L.SCANNING:
         if n == 0:
             first = f"Show number 1 of {S.CODE_LENGTH} with your fingers"
@@ -109,7 +109,7 @@ def instructions(d, seen_k, seen_p):
             return first, f"Change to a DIFFERENT number (not {d.digits[-1]})"
         return first, f"Hold it in the green box ({S.HOLD_S:.1f} s). {d.seconds} s left"
     if d.mode == L.UNLOCKED:
-        return "Correct code: the safe is open.", f"Relocks in {d.seconds} s, or press SPACE."
+        return "Correct code: the safe is open.", f"Relocks in {d.seconds} s, or press the button."
     if d.mode == L.DENIED:
         return "That code is wrong. Still locked.", f"Wrong tries: {d.fails} of {S.MAX_TRIES}"
     if d.mode == L.LOCKOUT:
