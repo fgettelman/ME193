@@ -1,0 +1,6 @@
+name: Vault Lock
+description: "Finger-code safe: a CNN counts the fingers under the camera, three numbers unlock the servo"
+icon: 🔐
+ports:
+  - 8040
+bricks: []
