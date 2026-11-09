@@ -7,3 +7,10 @@ my_env_gait_py312/
 gait-identifier/models/deployed.json
 my_env_steps_py312/
 step-counter/models/deployed.json
+my_env_vault_py312/
+vault-lock/unoq_app/python/code.json
+vault-lock/unoq_app/python/peek.jpg
+vault-lock/results/peek.jpg
+vault-lock/models/deployed.json
+# accidental SSH key files from a mistyped ssh-keygen prompt: never commit
+vault-lock/ssh-copy-id*
