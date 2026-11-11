@@ -14,3 +14,5 @@ vault-lock/results/peek.jpg
 vault-lock/models/deployed.json
 # accidental SSH key files from a mistyped ssh-keygen prompt: never commit
 vault-lock/ssh-copy-id*
+vault-lock/movie/audio/
+vault-lock/movie/stills/

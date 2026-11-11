@@ -1,0 +1,216 @@
+1
+00:00:04,000 --> 00:00:05,238
+This is my safe.
+
+2
+00:00:05,238 --> 00:00:06,167
+There's no keypad.
+
+3
+00:00:06,167 --> 00:00:12,669
+You press the button, show the camera three numbers with your fingers, and if they're right, the servo swings it open.
+
+4
+00:00:12,669 --> 00:00:16,694
+The thing reading your fingers is a neural network I built from scratch.
+
+5
+00:00:16,694 --> 00:00:17,933
+Here's how it works.
+
+6
+00:00:19,333 --> 00:00:23,195
+The camera sees a picture, but a computer only sees numbers.
+
+7
+00:00:23,195 --> 00:00:28,461
+I crop the middle of the frame and shrink it to 64 by 64 pixels.
+
+8
+00:00:28,461 --> 00:00:34,429
+Each pixel has a red, a green and a blue value, so every picture is 12,288 numbers.
+
+9
+00:00:34,429 --> 00:00:41,100
+The network's job is to turn those numbers into one answer: zero, one, two, three, four or five fingers.
+
+10
+00:00:42,500 --> 00:00:44,436
+The building block is a neuron.
+
+11
+00:00:44,436 --> 00:00:52,184
+It multiplies each input by a weight, adds them all up, and passes the total through ReLU: negative becomes zero, positive goes straight through.
+
+12
+00:00:52,184 --> 00:00:57,349
+That one bend is what lets a stack of these learn shapes, not just straight lines.
+
+13
+00:00:58,750 --> 00:01:00,689
+For pictures I use a convolution.
+
+14
+00:01:00,689 --> 00:01:09,416
+Instead of one neuron looking at the whole image, a tiny 3 by 3 filter, just nine weights, slides across the picture one step at a time.
+
+15
+00:01:09,416 --> 00:01:14,264
+At every spot it multiplies and adds, and writes one number onto a new map.
+
+16
+00:01:14,264 --> 00:01:22,668
+If the filter has learned to find an edge, the map lights up wherever there's an edge, anywhere in the picture, using the same nine weights.
+
+17
+00:01:22,668 --> 00:01:27,516
+That sharing is why my first layer needs only 448 weights instead of almost 200,000.
+
+18
+00:01:28,916 --> 00:01:33,757
+One filter finds one pattern, so each layer has many of them.
+
+19
+00:01:33,757 --> 00:01:34,967
+That's the width.
+
+20
+00:01:34,967 --> 00:01:44,245
+My first layer has 16 filters, so it makes 16 feature maps: edges at different angles, light against dark, skin against the background.
+
+21
+00:01:44,245 --> 00:01:48,683
+Each layer after that doubles it: 32, then 64, then 128.
+
+22
+00:01:50,083 --> 00:01:52,043
+After each convolution comes max pooling.
+
+23
+00:01:52,043 --> 00:01:56,618
+I look at every 2 by 2 block and keep only the biggest number.
+
+24
+00:01:56,618 --> 00:02:03,481
+The map shrinks to half its width and height, 64, then 32, 16 and 8, so there's far less to compute.
+
+25
+00:02:03,481 --> 00:02:10,016
+And because it keeps the strongest signal, a finger that moves over by one pixel gives almost the same answer.
+
+26
+00:02:11,416 --> 00:02:13,058
+Stacking layers is the depth.
+
+27
+00:02:13,058 --> 00:02:25,868
+My network has four convolution layers, and each one looks at the one below it, so it sees a bigger patch of the original picture: 3 pixels, then 8, then 18, then 38, enough to see a whole hand.
+
+28
+00:02:25,868 --> 00:02:30,795
+Edges become bits of finger, bits become fingers, and fingers become "three in a row".
+
+29
+00:02:30,795 --> 00:02:38,350
+In my tests, depth mattered most: with only two layers, the network couldn't see a whole hand and got less than half right.
+
+30
+00:02:39,750 --> 00:02:51,037
+At the end, global average pooling squashes each of the 128 maps down to one number, and a last layer turns those into six scores, one for each count.
+
+31
+00:02:51,037 --> 00:02:56,097
+Softmax turns the scores into probabilities, and the biggest one is the answer.
+
+32
+00:02:56,097 --> 00:02:58,433
+Altogether, the network has 98,694 weights.
+
+33
+00:02:59,833 --> 00:03:03,141
+At first the weights are random, so the answers are garbage.
+
+34
+00:03:03,141 --> 00:03:04,043
+Training fixes that.
+
+35
+00:03:04,043 --> 00:03:09,156
+I show it a picture and the right answer, and the loss measures how wrong it was.
+
+36
+00:03:09,156 --> 00:03:19,683
+Backpropagation then works backwards through every layer using the chain rule, and figures out, for every single weight: if I nudge you a little, does the loss go up or down, and by how much?
+
+37
+00:03:21,083 --> 00:03:25,341
+Gradient descent uses that answer to move every weight a small step downhill.
+
+38
+00:03:25,341 --> 00:03:32,876
+Do that thousands of times, on batches of 64 pictures, and the loss rolls down into a valley where the answers are right.
+
+39
+00:03:32,876 --> 00:03:39,100
+I wrote that step myself, with momentum, so it keeps rolling through the small bumps instead of getting stuck.
+
+40
+00:03:40,500 --> 00:03:45,098
+It learned from about 2,500 pictures of my hand, taken with the webcam.
+
+41
+00:03:45,098 --> 00:03:51,111
+During training every picture gets randomly turned, zoomed, mirrored and re-lit, so it can't just memorise them.
+
+42
+00:03:51,111 --> 00:03:59,600
+Then I test it on recordings it has never seen: it gets 95 percent right, and every count from one to five was perfect.
+
+43
+00:04:01,000 --> 00:04:03,620
+Here's something we didn't do in class: Grad-CAM.
+
+44
+00:04:03,620 --> 00:04:08,535
+It uses backpropagation again, but asks a different question: which pixels made you say that?
+
+45
+00:04:08,535 --> 00:04:10,500
+The answer is a heat map.
+
+46
+00:04:10,500 --> 00:04:12,466
+And it caught my network cheating.
+
+47
+00:04:12,466 --> 00:04:17,380
+It had decided my smartwatch meant "one", because I wore it in my "one" pictures.
+
+48
+00:04:17,380 --> 00:04:23,933
+I recorded more pictures with and without the watch, and now the heat sits on the fingers, where it belongs.
+
+49
+00:04:25,333 --> 00:04:29,302
+Last, I moved the trained network onto the Arduino UNO Q.
+
+50
+00:04:29,302 --> 00:04:35,798
+It reads the camera about fifteen times a second, and the network takes about 25 milliseconds per picture.
+
+51
+00:04:35,798 --> 00:04:39,045
+So: press the button, the lights come on, one…
+
+52
+00:04:39,045 --> 00:04:39,406
+four…
+
+53
+00:04:39,406 --> 00:04:39,767
+two…
+
+54
+00:04:39,767 --> 00:04:40,850
+and it's open.
+
