@@ -1,0 +1,5 @@
+# made when you run the scripts
+*.mp4
+silly_robot.xml
+__pycache__/
+logs/
