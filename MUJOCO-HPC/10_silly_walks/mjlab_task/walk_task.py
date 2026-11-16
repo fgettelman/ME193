@@ -4,9 +4,13 @@ The robot starts at the origin pointing a little off to one side (random yaw), w
 It must walk forward while staying on the line y = 0 and keeping its heading along +x. The policy outputs one speed
 for each beam.
 
-The policy only sees what the real Double Motor can measure itself (so the same policy could later run on the real
-robot): its tilt, its turning rate (gyro), its heading (yaw), each beam's angle and speed, and what it did last.
-The critic, used only during training, also sees how fast the robot is moving and how far it is off the line.
+The policy only sees what the real Double Motor can measure itself, so the same policy runs on the real robot
+(../run_real.py): its tilt, its turning rate (gyro), its heading (yaw), each beam's angle and speed, and what it did
+last. The critic, used only during training, also sees how fast the robot is moving and how far it is off the line.
+
+So that the policy also works in real life, training makes the simulation as messy as the real robot: the policy
+decides 20 times a second (as fast as the real motor's Bluetooth allows), its commands arrive up to one step late,
+the sensors are noisy, friction, mass and motor strength differ from robot to robot, and speeds are capped at 100%.
 
 Importing this file registers the task "Silly-Walk" (see train.py / play.py next to it).
 Everything you will want to tune is in the constants block and the reward weights. The robot is in ../silly_robot.py.
@@ -28,6 +32,7 @@ import silly_robot  # noqa: E402
 from mjlab.actuator import BuiltinPdActuatorCfg  # noqa: E402
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg  # noqa: E402
 from mjlab.envs import ManagerBasedRlEnvCfg  # noqa: E402
+from mjlab.envs.mdp import dr  # noqa: E402
 from mjlab.envs.mdp import (  # noqa: E402
   action_rate_l2,
   base_ang_vel,
@@ -48,9 +53,11 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg  # noqa: E402
 from mjlab.managers.termination_manager import TerminationTermCfg  # noqa: E402
 from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg  # noqa: E402
 from mjlab.scene import SceneCfg  # noqa: E402
+from mjlab.sensor.builtin_sensor import BuiltinSensorCfg, ObjRef  # noqa: E402
 from mjlab.sim import MujocoCfg, SimulationCfg  # noqa: E402
 from mjlab.tasks.registry import register_mjlab_task  # noqa: E402
 from mjlab.terrains import TerrainEntityCfg  # noqa: E402
+from mjlab.utils.noise import UniformNoiseCfg  # noqa: E402
 from mjlab.viewer import ViewerConfig  # noqa: E402
 
 if TYPE_CHECKING:
@@ -63,6 +70,19 @@ MAX_BEAM_SPEED = silly_robot.MAX_SPEED   # rad/s; a policy output of 1.0 means t
 START_YAW = 0.4             # rad; the robot starts pointing up to this far off +x
 MAX_OFF_LINE = 1.0          # m; the episode ends if the robot wanders this far from y = 0
 EPISODE_S = 10.0
+
+# Making the simulation as messy as real life (see the top of this file):
+PHYSICS_DT = 0.002                                         # s per physics step (small, light parts need small steps)
+DECIMATION = round(1 / (silly_robot.CONTROL_HZ * PHYSICS_DT))   # physics steps per policy decision (25 at 20 Hz)
+COMMAND_DELAY_STEPS = (0, DECIMATION)    # a command reaches the motor 0 to 50 ms late (Bluetooth), in physics steps
+SENSOR_DELAY_STEPS = (0, 1)              # readings can be one decision old (50 ms)
+BEAM_FRICTION_RANGE = (0.1, 0.5)         # beam ends on the floor, each beam its own: our real robot on tile slips a
+                                         # lot (both beams at 60% for 10 s only got it 8 cm), and one side grips better
+MOTOR_FRICTION_RANGE = (0.1, 0.35)       # the motor's plastic case sliding on the floor
+MASS_SCALE_RANGE = (0.85, 1.15)          # the motor (with battery) weighs +/- 15%
+TORQUE_SCALE_RANGE = (0.7, 1.3)          # motors (and battery charge) differ by +/- 30%
+COM_OFFSET = 0.01                        # m: the motor's centre of mass can be this far off in x and y (battery):
+                                         # with both beams equal our real robot circles left, so it is lopsided
 # -------------------------------------------------------------------------------------------------------
 
 _ROBOT = SceneEntityCfg("robot")
@@ -83,6 +103,8 @@ def _robot_cfg() -> EntityCfg:
           damping=silly_robot.MOTOR_KV,
           effort_limit=silly_robot.STALL_TORQUE,
           armature=silly_robot.GEARBOX_INERTIA,
+          delay_min_lag=COMMAND_DELAY_STEPS[0],
+          delay_max_lag=COMMAND_DELAY_STEPS[1],
         ),
       ),
     ),
@@ -112,6 +134,15 @@ def heading(env: ManagerBasedRlEnv) -> torch.Tensor:
 def off_line(env: ManagerBasedRlEnv) -> torch.Tensor:
   """Sideways distance from the line, for the critic only (the real robot cannot measure it). Shape [num_envs, 1]."""
   return _off_line(env).unsqueeze(-1)
+
+
+def tilt(env: ManagerBasedRlEnv) -> torch.Tensor:
+  """Which way is down, as the real motor's accelerometer feels it: gravity plus every jolt of walking.
+
+  (mjlab's projected_gravity would be the perfect gravity direction, which the real robot never gets.) Shape [num_envs, 3].
+  """
+  acc = env.scene["robot/imu_acc"].data
+  return -acc / acc.norm(dim=-1, keepdim=True).clamp(min=1e-6)
 
 
 def beam_angles(env: ManagerBasedRlEnv) -> torch.Tensor:
@@ -145,18 +176,30 @@ def too_far_off_line(env: ManagerBasedRlEnv) -> torch.Tensor:
 
 
 def silly_walk_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
-  # What the policy sees: only things the real Double Motor measures.
+  # What the policy sees: only things the real Double Motor measures, in this order (run_real.py builds the same
+  # list from the real sensors). Each reading gets noise about the size of the real sensor's, and can be 50 ms old.
+  def sensor(func, noise):
+    return ObservationTermCfg(
+      func=func, noise=UniformNoiseCfg(n_min=-noise, n_max=noise),
+      delay_min_lag=SENSOR_DELAY_STEPS[0], delay_max_lag=SENSOR_DELAY_STEPS[1],
+    )
+
   actor_terms = {
-    "tilt": ObservationTermCfg(func=projected_gravity),    # Pitch and Roll
-    "gyro": ObservationTermCfg(func=base_ang_vel),         # GyroX/Y/Z
-    "heading": ObservationTermCfg(func=heading),           # Yaw
-    "beam_angle": ObservationTermCfg(func=beam_angles),    # LeftPosition, RightPosition
-    "beam_speed": ObservationTermCfg(func=joint_vel_rel),  # LeftSpeed, RightSpeed
+    "tilt": sensor(tilt, 0.05),                   # which way is down, from the accelerometer
+    "gyro": sensor(base_ang_vel, 0.15),           # turning rate, rad/s, from the gyro
+    "heading": sensor(heading, 0.02),             # Yaw
+    "beam_angle": sensor(beam_angles, 0.03),      # each beam's angle (about 2 degrees of noise)
+    "beam_speed": sensor(joint_vel_rel, 0.5),     # rad/s, worked out from the angle every 50 ms: rough
     "last_action": ObservationTermCfg(func=last_action),
   }
-  # The critic (training only) also gets to see how fast it moves and where it is.
+  # The critic (training only) gets clean, up-to-date readings, plus how fast it moves and where it is.
   critic_terms = {
-    **actor_terms,
+    "tilt": ObservationTermCfg(func=projected_gravity),        # the critic may have the perfect gravity direction
+    "gyro": ObservationTermCfg(func=base_ang_vel),
+    "heading": ObservationTermCfg(func=heading),
+    "beam_angle": ObservationTermCfg(func=beam_angles),
+    "beam_speed": ObservationTermCfg(func=joint_vel_rel),
+    "last_action": ObservationTermCfg(func=last_action),
     "lin_vel": ObservationTermCfg(func=base_lin_vel),
     "off_line": ObservationTermCfg(func=off_line),
   }
@@ -183,6 +226,36 @@ def silly_walk_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       mode="reset",
       params={"position_range": (-math.pi, math.pi), "velocity_range": (0.0, 0.0)},
     ),
+    # every robot copy gets its own floor, weight and motor strength, so the policy cannot rely on exact values
+    "beam_friction": EventTermCfg(
+      func=dr.geom_friction,
+      mode="startup",
+      params={"asset_cfg": SceneEntityCfg("robot", geom_names=(f"{LEFT}_geom", f"{RIGHT}_geom")),
+              "ranges": BEAM_FRICTION_RANGE, "operation": "abs", "shared_random": False},
+    ),
+    "motor_friction": EventTermCfg(
+      func=dr.geom_friction,
+      mode="startup",
+      params={"asset_cfg": SceneEntityCfg("robot", geom_names=("motor_case",)),
+              "ranges": MOTOR_FRICTION_RANGE, "operation": "abs"},
+    ),
+    "motor_mass": EventTermCfg(
+      func=dr.body_mass,
+      mode="startup",
+      params={"asset_cfg": SceneEntityCfg("robot", body_names=("motor",)),
+              "ranges": MASS_SCALE_RANGE, "operation": "scale"},
+    ),
+    "lopsided": EventTermCfg(
+      func=dr.body_com_offset,
+      mode="startup",
+      params={"asset_cfg": SceneEntityCfg("robot", body_names=("motor",)),
+              "ranges": (-COM_OFFSET, COM_OFFSET), "operation": "add", "axes": [0, 1]},
+    ),
+    "motor_strength": EventTermCfg(
+      func=dr.effort_limits,
+      mode="startup",
+      params={"asset_cfg": SceneEntityCfg("robot"), "effort_limit_range": TORQUE_SCALE_RANGE, "operation": "scale"},
+    ),
   }
 
   rewards = {
@@ -202,6 +275,7 @@ def silly_walk_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     scene=SceneCfg(
       terrain=TerrainEntityCfg(terrain_type="plane"),
       entities={"robot": _robot_cfg()},
+      sensors=(BuiltinSensorCfg(name="imu_acc", sensor_type="accelerometer", obj=ObjRef("site", "imu", "robot")),),
       num_envs=1,
       env_spacing=3.0,
     ),
@@ -218,9 +292,9 @@ def silly_walk_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       elevation=-20.0,
       azimuth=130.0,
     ),
-    # small, light parts need small physics steps: 0.002 s, and the policy acts every 10 steps (50 times a second)
-    sim=SimulationCfg(mujoco=MujocoCfg(timestep=0.002, integrator="implicitfast")),
-    decimation=10,
+    # small, light parts need small physics steps; the policy acts every DECIMATION steps (CONTROL_HZ times a second)
+    sim=SimulationCfg(mujoco=MujocoCfg(timestep=PHYSICS_DT, integrator="implicitfast")),
+    decimation=DECIMATION,
     episode_length_s=1e10 if play else EPISODE_S,
   )
 
@@ -249,6 +323,7 @@ def silly_walk_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       max_grad_norm=1.0,
     ),
     experiment_name="silly_walk",
+    clip_actions=1.0,               # the real motor cannot go past 100%, so neither can the simulated one
     logger="tensorboard",           # the default, wandb, needs an account and a login
     save_interval=50,
     num_steps_per_env=24,
