@@ -1,0 +1,48 @@
+{
+  "max_speed_rad_s": 17.587,
+  "motor_long_end": "back",
+  "position_sign": [
+    -1,
+    1
+  ],
+  "absolute_sign": [
+    -1,
+    1
+  ],
+  "beam_zero_deg": [
+    82.0,
+    90.0
+  ],
+  "chip_axes": [
+    [
+      0.9886,
+      0.1341,
+      -0.0678
+    ],
+    [
+      -0.1341,
+      0.991,
+      0.0051
+    ],
+    [
+      0.0679,
+      0.0041,
+      0.9977
+    ]
+  ],
+  "yaw_rad_per_count": 0.0017453292519943296,
+  "gyro_rad_s_per_count": 0.01788273035279723,
+  "measured": {
+    "speed_100_rad_s": [
+      17.587,
+      17.587
+    ],
+    "speed_50_rad_s": [
+      8.656,
+      8.602
+    ],
+    "gravity_counts": 1002.9,
+    "readings_per_second": 31,
+    "date": "2026-11-15 22:11"
+  }
+}
