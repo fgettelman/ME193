@@ -36,6 +36,7 @@ Sample buf[BUF_N];
 volatile uint32_t head = 0;   // written only by loop()
 volatile uint32_t tail = 0;   // written only by read_batch()
 volatile uint32_t dropped = 0;
+uint32_t wakeups = 0;         // times the MPU was found asleep (power blip) and woken
 
 void mpu_write(uint8_t reg, uint8_t val) {
   bus->beginTransmission(mpu_addr);
@@ -44,12 +45,48 @@ void mpu_write(uint8_t reg, uint8_t val) {
   bus->endTransmission();
 }
 
-// Look for the MPU-6050 on the Qwiic connector first, then the header pins.
+// The UNO Q's I2C buses (from the board's Zephyr overlay):
+//   Wire  = header SDA/SCL pins = D20 (SDA, PB11) / D21 (SCL, PB10)
+//   Wire1 = Qwiic connector (PD13/PD12, no Arduino pin numbers)
+//   Wire2 = A4 (SDA, PC1) / A5 (SCL, PC0)
+// If the microcontroller resets in the middle of a read, the MPU-6050 can be
+// left holding SDA low, and every transfer after that fails. Clocking SCL a
+// few times lets it finish and let go ("bus recovery"). Wire.begin() then
+// puts the pins back on I2C.
+String line_levels = "";
+
+String recover_bus(int sda, int scl) {
+  pinMode(sda, INPUT_PULLUP);
+  pinMode(scl, INPUT_PULLUP);
+  delayMicroseconds(20);
+  bool sda_hi = digitalRead(sda), scl_hi = digitalRead(scl);
+  String s = String("SDA ") + (sda_hi ? "high" : "LOW") + ", SCL " + (scl_hi ? "high" : "LOW");
+  if (!sda_hi && scl_hi) {
+    pinMode(scl, OUTPUT);
+    for (int i = 0; i < 16 && !digitalRead(sda); i++) {
+      digitalWrite(scl, LOW);  delayMicroseconds(10);
+      digitalWrite(scl, HIGH); delayMicroseconds(10);
+    }
+    pinMode(sda, OUTPUT);                   // a STOP: SDA low -> high while SCL high
+    digitalWrite(sda, LOW);  delayMicroseconds(10);
+    digitalWrite(sda, HIGH); delayMicroseconds(10);
+    pinMode(sda, INPUT_PULLUP);
+    pinMode(scl, INPUT_PULLUP);
+    s += digitalRead(sda) ? " (was stuck, freed)" : " (stuck, couldn't free)";
+  }
+  return s;
+}
+
+// Look for the MPU-6050 on the Qwiic connector, the header pins, then A4/A5.
 bool find_mpu() {
-  TwoWire *buses[2] = {&Wire1, &Wire};
-  const char *names[2] = {"Wire1 (Qwiic)", "Wire (header pins)"};
+  TwoWire *buses[3] = {&Wire1, &Wire, &Wire2};
+  const char *names[3] = {"Qwiic", "header SDA/SCL", "A4/A5"};
+  const int sda_pin[3] = {-1, 20, 18}, scl_pin[3] = {-1, 21, 19};
   const uint8_t addrs[2] = {0x68, 0x69};
-  for (int b = 0; b < 2; b++) {
+  line_levels = "";
+  for (int b = 0; b < 3; b++) {
+    if (sda_pin[b] >= 0)
+      line_levels += String(names[b]) + ": " + recover_bus(sda_pin[b], scl_pin[b]) + ". ";
     buses[b]->begin();
     buses[b]->setClock(400000);
     for (int a = 0; a < 2; a++) {
@@ -57,16 +94,22 @@ bool find_mpu() {
       if (buses[b]->endTransmission() == 0) {
         bus = buses[b];
         mpu_addr = addrs[a];
-        sensor = String("MPU-6050 found on ") + names[b] + " at 0x" + String(addrs[a], HEX);
+        bus->beginTransmission(mpu_addr);    // WHO_AM_I: 0x68 on a real MPU-6050
+        bus->write(0x75);
+        uint8_t who = 0;
+        if (bus->endTransmission() == 0 && bus->requestFrom((int)mpu_addr, 1) == 1) who = bus->read();
+        sensor = String("MPU-6050 found on ") + names[b] + " at 0x" + String(addrs[a], HEX)
+                 + ", WHO_AM_I 0x" + String(who, HEX) + ". " + line_levels;
         return true;
       }
     }
   }
+  sensor = String("MPU-6050 not found on Qwiic, header SDA/SCL or A4/A5. ") + line_levels;
   return false;
 }
 
 String sensor_info() {
-  return sensor;
+  return sensor + " (woken after power blips: " + String(wakeups) + ")";
 }
 
 void mpu_setup() {
@@ -77,6 +120,51 @@ void mpu_setup() {
   mpu_write(0x19, 0x09);   // SMPLRT_DIV: 1 kHz / (1 + 9) = 100 Hz
   mpu_write(0x1B, 0x10);   // GYRO_CONFIG:  +/-1000 deg/s  (32.8 counts per deg/s)
   mpu_write(0x1C, 0x10);   // ACCEL_CONFIG: +/-8 g         (4096 counts per g)
+  // The MPU's own FIFO keeps sampling at exactly 100 Hz even when this loop
+  // is busy (e.g. sending data to Linux), so no samples go missing.
+  mpu_write(0x23, 0x78);   // FIFO_EN: accel x/y/z + gyro x/y/z (12 bytes per sample)
+  mpu_write(0x6A, 0x04);   // USER_CTRL: reset the FIFO
+  delay(2);
+  mpu_write(0x6A, 0x40);   // USER_CTRL: FIFO on
+}
+
+// Read n bytes starting at register reg.
+bool mpu_read_bytes(uint8_t reg, uint8_t *out, int n) {
+  bus->beginTransmission(mpu_addr);
+  bus->write(reg);
+  if (bus->endTransmission(false) != 0) return false;
+  if (bus->requestFrom((int)mpu_addr, n) != n) return false;
+  for (int i = 0; i < n; i++) out[i] = bus->read();
+  return true;
+}
+
+// Move whatever the MPU's FIFO holds into our ring buffer.
+void drain_fifo() {
+  uint8_t c[2];
+  if (!mpu_read_bytes(0x72, c, 2)) return;            // FIFO_COUNT
+  int count = (c[0] << 8) | c[1];
+  if (count >= 1000) {                                  // overflowed (loop stalled > 0.8 s)
+    mpu_write(0x6A, 0x44);                              // reset + keep FIFO on
+    dropped += count / 12;
+    return;
+  }
+  int n = count / 12;
+  uint32_t now = millis();
+  int done = 0;
+  while (done < n) {
+    int k = min(10, n - done);                          // 120 bytes per read (Wire buffer is 256)
+    uint8_t raw[120];
+    if (!mpu_read_bytes(0x74, raw, k * 12)) return;     // FIFO_R_W
+    for (int j = 0; j < k; j++) {
+      if (head - tail >= BUF_N) { dropped++; continue; }
+      Sample &p = buf[head % BUF_N];
+      p.t = now - (uint32_t)(n - 1 - (done + j)) * 10;  // 10 ms apart, newest = now
+      for (int i = 0; i < 6; i++)
+        p.v[i] = (int16_t)((raw[j * 12 + 2 * i] << 8) | raw[j * 12 + 2 * i + 1]);
+      head++;
+    }
+    done += k;
+  }
 }
 
 bool mpu_read(int16_t out[6]) {
@@ -143,39 +231,51 @@ bool show(int which) {
 }
 
 void setup() {
-  have_mpu = find_mpu();
-  if (have_mpu) mpu_setup();
-#if USE_LED_MATRIX
-  matrix.begin();
-#endif
+  // Bridge first, so the board can always say what's wrong with the sensor.
   Bridge.begin();
   Bridge.provide("read_batch", read_batch);
   Bridge.provide("dropped", dropped_count);
   Bridge.provide("show", show);
   Bridge.provide("sensor_info", sensor_info);
+#if USE_LED_MATRIX
+  matrix.begin();
+#endif
+  have_mpu = find_mpu();
+  if (have_mpu) mpu_setup();
 }
 
 void loop() {
-  if (!have_mpu) {                 // not plugged in yet: look again every 2 s
+  if (!have_mpu) {                 // not plugged in yet: look again every 3 s
     static unsigned long last_try = 0;
-    if (millis() - last_try < 2000) return;
+    if (millis() - last_try < 3000) return;
     last_try = millis();
     have_mpu = find_mpu();
     if (have_mpu) mpu_setup();
     return;
   }
-  static unsigned long next = micros();
-  if ((long)(micros() - next) < 0) return;
-  next += SAMPLE_US;
-
-  int16_t v[6];
-  if (!mpu_read(v)) return;
-  if (head - tail >= BUF_N) {   // Python fell behind: buffer full, skip this sample
-    dropped++;
-    return;
+  // After a power blip the MPU-6050 restarts asleep and reads all zeros while
+  // still answering on I2C. Check its sleep bit once a second and wake it.
+  static unsigned long last_check = 0;
+  if (millis() - last_check >= 1000) {
+    last_check = millis();
+    bus->beginTransmission(mpu_addr);
+    bus->write(0x6B);                        // PWR_MGMT_1
+    bool ok = bus->endTransmission(false) == 0 && bus->requestFrom((int)mpu_addr, 1) == 1;
+    uint8_t pm = ok ? bus->read() : 0xFF;
+    if (!ok) {
+      have_mpu = false;                      // gone: look for it again
+      sensor = "MPU-6050 stopped answering: check the cable";
+      return;
+    }
+    if (pm & 0x40) {                         // SLEEP bit set: it was reset
+      mpu_setup();
+      wakeups++;
+    }
   }
-  Sample &p = buf[head % BUF_N];
-  p.t = millis();
-  for (int i = 0; i < 6; i++) p.v[i] = v[i];
-  head++;
+
+  // Empty the MPU's FIFO every ~20 ms (it holds ~0.85 s, so stalls are fine).
+  static unsigned long next = 0;
+  if ((long)(millis() - next) < 0) return;
+  next = millis() + 20;
+  drain_fifo();
 }

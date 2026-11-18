@@ -74,10 +74,13 @@ step-counter and gait-identifier apps, which use the same sensor), copies your
 step length from `../step-counter/calibration.json`, and prints the page's
 address: `http://10.247.137.128:8050`.
 
-**On campus**, Tufts_Robot won't reach everywhere, so make the board its own
-hotspot: `python hotspot.py --on`, join Wi-Fi **CampusNav** on your phone and
-open `http://10.42.0.1:8050`. It switches back to Tufts_Robot by itself after
-90 minutes (`--minutes` to change).
+Phone and board both stay on **Tufts_Robot**. Run `python board_wifi.py` once
+per board: out of the box the board dropped off Tufts_Robot about every 2
+minutes (it hopped between 5 GHz access points), which froze the page. That
+script locks the board to 2.4 GHz and turns off Wi-Fi power saving.
+`python board_wifi.py --check` shows the signal and how many drops in the last
+hour. If the Wi-Fi still blips, the page says "Reconnecting…" and catches up
+by itself; the board keeps recording and guiding meanwhile.
 
 Wear it like the step counter: front of the thigh, above the knee, strapped
 firmly.
@@ -161,4 +164,5 @@ Replayed the step-counter recordings through it:
   distance-since-turn, which don't drift.
 - The step length is fixed per person, so distances on the walk are off by
   however much your stride changes.
-- `hotspot.py` uses `nmcli` on the board and hasn't been tried on ours yet.
+- The page needs Tufts_Robot wherever you walk. Indoors it's good; check the
+  outdoor parts of your route before relying on it.

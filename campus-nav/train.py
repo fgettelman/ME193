@@ -118,7 +118,10 @@ def main():
     if store.stairs_recordings():
         res = store.train_stairs()
         print(res if not res.get("ok") else
-              f"strides {res['strides']}, leave-one-out accuracy {res['loo_accuracy']:.0%}")
+              f"strides {res['strides']}, accuracy on held-out recordings {res['accuracy']:.0%} "
+              f"(per kind {res['recall']})")
+        for r in res.get("too_short", []):
+            print(f"   too short to use (no full stride): {r['id']} ({r['seconds']} s)")
     else:
         print("No stairs recordings (Train tab -> Stairs on the phone); stairs stay 'flat'.")
 

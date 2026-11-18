@@ -244,30 +244,68 @@ class Store:
 
     def train_stairs(self):
         """Fit the stairs classifier on the stairs recordings (strides from each,
-        minus the first and last stride, which are getting on / off)."""
-        X, y = [], []
+        minus the first and last stride, which are getting on / off), plus the
+        strides of every reviewed walk: flat except where Review says stairs.
+        So fixing the stairs in Review also teaches the classifier."""
+        X, y, group = [], [], []          # group: which recording/walk a stride came from
+        too_short = []
         for m in self.stairs_recordings():
             raw = load_raw(os.path.join(self.root, "stairs", m["id"], "raw.csv"))
             step = self.step_length(m.get("person"))
             tr = navcore.replay(raw, step, keep_strides=True)
             strides = tr.strides[1:-1]
+            if len(strides) < 3:
+                too_short.append({"id": m["id"], "cls": m["cls"], "seconds": m.get("seconds")})
             X += [f for _, f in strides]
             y += [m["cls"]] * len(strides)
+            group += [m["id"]] * len(strides)
+        from_walks = 0
+        for w in self.walks():
+            if not w["reviewed"]:
+                continue
+            m = self.meta(w["id"])
+            raw = load_raw(os.path.join(self._wdir(w["id"]), "raw.csv"))
+            tr = navcore.replay(raw, m.get("step_length_m", 0.70), keep_strides=True, t0=m.get("t0"))
+            Xw, yw = navcore.label_strides(tr.strides, self.labels(w["id"])["events"])
+            X += Xw
+            y += yw
+            group += [w["id"]] * len(yw)
+            from_walks += len(yw)
         counts = {c: y.count(c) for c in S.STAIR_CLASSES}
         if counts["flat"] < 4 or counts["up"] + counts["down"] < 4:
-            return {"ok": False, "error": f"need more strides: {counts}. Record ~30 s of "
-                                          "each (flat walking, stairs up, stairs down)."}
-        # Leave-one-out accuracy, so you can see if it's any good.
-        X_a, y_a = np.array(X), np.array(y)
-        right = 0
-        for i in range(len(y)):
-            keep = np.arange(len(y)) != i
-            m = navcore.StairsModel.fit(X_a[keep], y_a[keep], "loo")
-            p = m.probs(X_a[i])
-            right += max(p, key=p.get) == y_a[i]
+            return {"ok": False, "too_short": too_short,
+                    "error": f"need more strides: {counts}. Record ~30 s of "
+                             "each (flat walking, stairs up, stairs down)."}
+        # Honest accuracy: hold out one whole recording (or walk) at a time and
+        # test on it. Strides from the same recording are nearly identical, so
+        # holding out single strides made it look far better than it is.
+        X_a, y_a, g_a = np.array(X), np.array(y), np.array(group)
+        per = {c: [0, 0] for c in S.STAIR_CLASSES}
+        for gid in np.unique(g_a):
+            test = g_a == gid
+            if len(set(y_a[~test])) < 2:
+                continue
+            m = navcore.StairsModel.fit(X_a[~test], y_a[~test], "cv")
+            for f, t in zip(X_a[test], y_a[test]):
+                p = m.probs(f)
+                per[t][1] += 1
+                per[t][0] += max(p, key=p.get) == t
+        tested = sum(n for _, n in per.values())
+        recall = {c: round(r / n, 3) for c, (r, n) in per.items() if n}
         model = navcore.StairsModel.fit(X, y, f"stairs-{int(time.time())}")
         _write(os.path.join(self.root, "models", "stairs.json"), model.d)
-        return {"ok": True, "strides": counts, "loo_accuracy": round(right / len(y), 3)}
+        self.retrack_all(model)
+        return {"ok": True, "strides": counts, "from_walks": from_walks,
+                "accuracy": round(sum(r for r, _ in per.values()) / tested, 3) if tested else None,
+                "recall": recall, "groups": int(len(np.unique(g_a))), "too_short": too_short}
+
+    def retrack_all(self, stairs=None):
+        """Re-run every walk with the current stairs model, so Review shows
+        what the new classifier thinks."""
+        stairs = stairs or self.stairs_model()
+        for wid in self.walk_ids():
+            if self.track(wid).get("stairs_model") != stairs.id:
+                self.retrack(wid, stairs)
 
     def retrack(self, wid, stairs=None):
         """Replay a walk's raw data (e.g. after the stairs model changed)."""
@@ -292,8 +330,9 @@ class Store:
             if retrack and self.track(w["id"]).get("stairs_model") != stairs.id:
                 self.retrack(w["id"], stairs)
             r = w["route"] or {}
-            rows = self.track(w["id"])["rows"]
-            labels = navcore.label_track(rows, self.labels(w["id"])["events"])
+            events = self.labels(w["id"])["events"]
+            rows = navcore.apply_reviewed_stairs(self.track(w["id"])["rows"], events)
+            labels = navcore.label_track(rows, events)
             X, y = navcore.training_rows(rows, labels)
             out.append((route_key(r.get("start", "?"), r.get("dest", S.DEFAULT_DEST)), X, y, w["id"]))
         return out, skipped

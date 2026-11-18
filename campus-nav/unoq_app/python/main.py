@@ -59,6 +59,7 @@ class Live:
         self.t0 = None
         self.rate = 0.0
         self.message = ""
+        self.sensor_ok = True
         self.last_saved = None
         self.stairs = store.stairs_model()
         self.policy = store.policy()
@@ -151,7 +152,7 @@ class Live:
             row = tr.row(self.t) if self.t else None
             s = {"mode": self.mode, "phase": self.phase, "person": self.person,
                  "route": self.route, "message": self.message, "rate": round(self.rate),
-                 "calibrated": tr.heading.calibrated, "still": tr.heading.still_n > 20,
+                 "sensor_ok": self.sensor_ok, "calibrated": tr.heading.calibrated, "still": tr.heading.still_n > 20,
                  "row": row, "taps": self.taps[-5:], "n_taps": len(self.taps),
                  "auto_events": tr.events[-5:], "last_saved": self.last_saved,
                  "bias": [round(b, 2) for b in tr.heading.bias],
@@ -215,7 +216,7 @@ try:
 except OSError as e:
     print(f"Web server didn't start: {e}")
 
-counter = {"n": 0, "t": time.monotonic()}
+counter = {"n": 0, "zeros": 0, "t": time.monotonic()}
 
 
 def read_samples():
@@ -237,19 +238,29 @@ def loop():
         print(f"bridge error: {e}")
         time.sleep(1.0)
         return
-    if samples:
-        live.add_samples(samples)
-    counter["n"] += len(samples)
+    # An accelerometer reading exactly 0 g is impossible (gravity): it means the
+    # MPU-6050 is asleep after a power blip. Don't feed those to the heading.
+    good = [s for s in samples if any(s[1][:3])]
+    counter["zeros"] += len(samples) - len(good)
+    if good:
+        live.add_samples(good)
+    counter["n"] += len(good)
     el = time.monotonic() - counter["t"]
     if el >= 5:
         live.rate = counter["n"] / el
-        if counter["n"] == 0:
+        zeros = counter["zeros"]
+        live.sensor_ok = counter["n"] > 0
+        if counter["n"] == 0 or zeros:
             try:
-                live.message = "no IMU data: " + Bridge.call("sensor_info")
+                info = Bridge.call("sensor_info")
             except Exception:
-                pass
-        print(f"mode={live.mode} {live.rate:.0f} samples/s")
-        counter["n"], counter["t"] = 0, time.monotonic()
+                info = ""
+            live.message = (("Sensor is sending zeros: check the VCC/GND wires. " if zeros else
+                             "No IMU data: ") + info)
+        elif live.message.startswith(("Sensor is sending zeros", "No IMU data")):
+            live.message = "Sensor OK again"
+        print(f"mode={live.mode} {live.rate:.0f} samples/s, {zeros} zero samples")
+        counter["n"], counter["zeros"], counter["t"] = 0, 0, time.monotonic()
     time.sleep(0.05)
 
 

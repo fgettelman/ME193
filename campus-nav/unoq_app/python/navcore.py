@@ -147,15 +147,25 @@ class TurnDetector:
 
 # --- Stairs -----------------------------------------------------------------
 
-STRIDE_FEATURES = ["angle_range", "angle_max", "swing_max", "swing_min", "duration", "accel_std"]
+# Stride features that say "stairs or not" without saying "fast or slow":
+#   angle_range       how far the thigh swings, deg (up stairs: ~63, else ~35)
+#   bounce_per_swing  accel jolt relative to swing speed (stairs jolt more)
+#   back_swing_frac   share of the stride the thigh swings back (less going down)
+# Raw swing speed, stride time and bounce were dropped: they mostly measure
+# walking pace, so a brisk flat walk looked like stairs. Picked by
+# leave-one-recording-out accuracy on our recordings: 89% vs 69% before.
+# (The peak thigh angle was dropped earlier: it depends on a standing reference.)
+STRIDE_FEATURES = ["angle_range", "bounce_per_swing", "back_swing_frac"]
 
 
 def stride_features(samples):
     """samples: list of (t, thigh angle, thigh swing, |accel|) over one stride."""
     a = np.array(samples)
-    return [float(a[:, 1].max() - a[:, 1].min()), float(a[:, 1].max()),
-            float(a[:, 2].max()), float(a[:, 2].min()),
-            float(a[-1, 0] - a[0, 0]), float(a[:, 3].std())]
+    ang, sw, acc = a[:, 1], a[:, 2], a[:, 3]
+    smax, smin = float(sw.max()), float(sw.min())
+    return [float(ang.max() - ang.min()),
+            float(acc.std() / max(smax, 1.0) * 100),
+            float(np.mean(sw < -0.3 * abs(smin)))]
 
 
 class StairsModel:
@@ -166,7 +176,8 @@ class StairsModel:
 
     @property
     def ready(self):
-        return self.d is not None
+        # A model trained on the old feature list is ignored (retrain stairs).
+        return self.d is not None and self.d.get("features") == STRIDE_FEATURES
 
     @property
     def id(self):
@@ -223,7 +234,7 @@ class NavTracker:
         self.since_turn_d = 0.0
         self.flights = 0
         self.on = "flat"                       # flat / up / down
-        self.stride_cls = deque(maxlen=S.FLIGHT_STRIDES)
+        self.stride_cls = deque(maxlen=max(S.FLIGHT_STRIDES, S.FLIGHT_END_STRIDES))
         self.flight_start = None
         self.events = []                       # auto-detected: turns, flights
         self.track = []
@@ -277,11 +288,16 @@ class NavTracker:
             self.strides.append((t, f))
         p = self.stairs.probs(f)
         cls = max(p, key=p.get)
-        self.stride_cls.append(cls)
-        full = len(self.stride_cls) == S.FLIGHT_STRIDES
-        if self.on == "flat" and full and cls != "flat" and all(c == cls for c in self.stride_cls):
-            self.on, self.flight_start = cls, prev
-        elif self.on != "flat" and full and all(c == "flat" for c in self.stride_cls):
+        if cls != "flat" and p[cls] < S.STAIR_MIN_P:     # not sure: call it flat
+            cls = "flat"
+        self.stride_cls.append((prev, cls))
+        recent = [c for _, c in self.stride_cls]
+        start_n, end_n = S.FLIGHT_STRIDES, S.FLIGHT_END_STRIDES
+        if (self.on == "flat" and cls != "flat" and len(recent) >= start_n
+                and all(c == cls for c in recent[-start_n:])):
+            self.on, self.flight_start = cls, self.stride_cls[-start_n][0]
+        elif (self.on != "flat" and len(recent) >= end_n
+              and all(c == "flat" for c in recent[-end_n:])):
             self.flights += 1
             self.events.append({"t": round(self.flight_start, 2), "t_end": round(t, 2),
                                 "type": "stairs_" + self.on, "auto": True})
@@ -349,6 +365,44 @@ def label_track(track, events, lookahead=S.LOOKAHEAD_M):
                 break
         out.append(lab)
     return out
+
+
+def stair_spans(events):
+    """(t_start, t_end, "up"/"down"/"flat") for reviewed stairs and flat spans."""
+    out = []
+    for e in events:
+        if e["type"] in ("stairs_up", "stairs_down"):
+            out.append((e["t"], e.get("t_end", e["t"] + 6.0), e["type"][7:]))
+        elif e["type"] == "straight" and e.get("t_end") is not None:
+            out.append((e["t"], e["t_end"], "flat"))
+    return out
+
+
+def apply_reviewed_stairs(rows, events):
+    """The track with "on" and "flights" taken from the reviewed stairs, not
+    the classifier's guesses, so the navigator trains on what really happened."""
+    spans = [s for s in stair_spans(events) if s[2] != "flat"]
+    out = []
+    for r in rows:
+        t = r["t"]
+        on = next((k for t0, t1, k in spans if t0 <= t <= t1), "flat")
+        out.append({**r, "on": on, "flights": sum(1 for _, t1, _ in spans if t1 < t)})
+    return out
+
+
+def label_strides(strides, events, margin_s=1.0):
+    """Stairs-classifier training data from a reviewed walk: each stride is
+    up/down inside a reviewed stairs span, flat elsewhere; strides within
+    margin_s of a span's edge (getting on/off) are skipped."""
+    spans = stair_spans(events)
+    stairs = [s for s in spans if s[2] != "flat"]
+    X, y = [], []
+    for t, f in strides:
+        if any(abs(t - t0) < margin_s or abs(t - t1) < margin_s for t0, t1, _ in stairs):
+            continue
+        X.append(f)
+        y.append(next((k for t0, t1, k in spans if t0 <= t <= t1), "flat"))
+    return X, y
 
 
 # --- The navigator: k-nearest neighbours over the state ------------------------
