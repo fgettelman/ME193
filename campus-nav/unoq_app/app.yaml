@@ -1,0 +1,6 @@
+name: Campus Nav
+description: "Thigh-worn step counter + gyro heading + behavior-cloned guide to Nolop (no GPS, no Wi-Fi positioning, no camera)"
+icon: 🧭
+ports:
+  - 8050
+bricks: []
