@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14532d">
+<title>Campus Nav</title>
+<style>
+:root{
+  --bg:#f6f7f5; --card:#fff; --ink:#1b1f1c; --mute:#66706a; --line:#dde2de;
+  --acc:#166534; --acc2:#15803d; --warn:#b45309; --bad:#b91c1c;
+  --straight:#8a948e; --left:#2563eb; --right:#ea580c; --stairs_up:#16a34a; --stairs_down:#9333ea; --arrived:#dc2626;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#101412; --card:#19201c; --ink:#e7ece9; --mute:#9aa59f; --line:#2a332e; --acc:#4ade80; --acc2:#22c55e;}
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.35 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
+.top{position:sticky;top:0;z-index:5}
+header{background:var(--acc);color:#fff;padding:10px 14px 6px;display:flex;align-items:center;gap:8px}
+.modebar{background:var(--acc);padding:2px 14px 10px}
+@media (prefers-color-scheme: dark){header,.modebar{background:#14532d}}
+.seg{display:flex;background:rgba(0,0,0,.18);border-radius:11px;padding:3px;gap:3px;max-width:420px;margin:0 auto}
+.seg button{flex:1;border:0;border-radius:8px;padding:8px 6px;font-size:15px;font-weight:600;background:none;color:rgba(255,255,255,.85)}
+.seg button.on{background:#fff;color:#14532d}
+header h1{font-size:18px;margin:0;flex:1}
+header .pill{font-size:13px;background:rgba(255,255,255,.18);padding:3px 8px;border-radius:99px;white-space:nowrap}
+#dot{width:10px;height:10px;border-radius:50%;background:#aaa;display:inline-block}
+nav{display:flex;background:var(--card);border-bottom:1px solid var(--line)}
+nav button{flex:1;border:0;background:none;padding:11px 2px;font-size:14px;color:var(--mute);border-bottom:3px solid transparent;min-width:0}
+nav button.on{color:var(--ink);border-color:var(--acc);font-weight:600}
+main{padding:12px 14px 90px;max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+h2{font-size:16px;margin:0 0 8px}
+label{display:block;font-size:13px;color:var(--mute);margin:8px 0 3px}
+input,select{width:100%;font-size:16px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+button.b{font-size:16px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:600}
+button.p{background:var(--acc2);border-color:var(--acc2);color:#fff}
+button.big{width:100%;padding:18px;font-size:19px;margin-top:10px}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.45}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row>*{flex:1}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.stat{background:var(--bg);border-radius:10px;padding:8px;text-align:center}
+.stat b{display:block;font-size:22px}
+.stat span{font-size:12px;color:var(--mute)}
+.mute{color:var(--mute);font-size:13px}
+.msg{padding:10px;border-radius:10px;background:var(--bg);margin-top:8px;font-weight:600}
+.hide{display:none!important}
+#instr{text-align:center;padding:18px 8px;border-radius:16px;color:#fff;background:var(--straight);transition:background .3s}
+#instr svg{width:140px;height:140px}
+#instr .txt{font-size:30px;font-weight:800;margin-top:4px}
+#instr .sub{opacity:.9}
+.bar{height:10px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--acc2);width:0}
+.pad button{padding:14px 4px;font-size:15px}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+.walk{padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.walk.sel{border-color:var(--acc2);box-shadow:0 0 0 2px var(--acc2) inset}
+.tag{font-size:12px;padding:2px 7px;border-radius:99px;background:var(--bg);border:1px solid var(--line);white-space:nowrap}
+.tag.ok{border-color:var(--acc2);color:var(--acc2)}
+canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-action:manipulation}
+.ev{display:grid;grid-template-columns:1.5fr auto auto auto auto;gap:6px;align-items:center;margin-bottom:6px}
+.ev select{padding:6px}
+.ev button{padding:6px 9px;font-size:14px}
+.steps-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.step{display:grid;grid-template-columns:34px 1fr;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
+.step .num{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--bg);border:2px solid var(--line);color:var(--mute)}
+.step.done .num{background:var(--acc2);border-color:var(--acc2);color:#fff}
+.step.now{border-color:var(--acc2);box-shadow:0 0 0 2px var(--acc2) inset}
+.step.now .num{border-color:var(--acc2);color:var(--acc2)}
+.step.later{opacity:.62}
+.step .ttl{display:flex;justify-content:space-between;gap:8px;align-items:center;cursor:pointer;min-height:30px}
+.step .ttl b{font-size:16px}
+.step ol{margin:8px 0;padding-left:20px}
+.step ol li{margin:4px 0}
+.chip{font-size:12px;padding:2px 8px;border-radius:99px;white-space:nowrap;border:1px solid var(--line);color:var(--mute)}
+.chip.ok{background:var(--acc2);border-color:var(--acc2);color:#fff}
+.chip.now{border-color:var(--acc2);color:var(--acc2);font-weight:700}
+.tip{font-size:13px;background:var(--bg);border-left:3px solid var(--acc2);padding:8px 10px;border-radius:6px;margin:8px 0}
+.stepbar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-left:4px solid var(--acc2)}
+.stepbar span{flex:1;font-size:14px}
+.stepbar button{padding:8px 10px;font-size:14px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.btnrow button{flex:1 1 30%}
+.legend{font-size:12px;color:var(--mute);display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="top">
+<header>
+  <span id="dot"></span><h1>Campus Nav</h1>
+  <span class="pill" id="who">—</span>
+  <span class="pill" id="wcount">0/10 walks</span>
+</header>
+<div class="modebar"><div class="seg" id="modeseg">
+  <button data-m="train">🎓 Training</button>
+  <button data-m="nav">🧭 Navigate</button>
+</div></div>
+<nav id="tabs">
+  <button data-t="steps">Steps</button>
+  <button data-t="walk">Walk</button>
+  <button data-t="guide">Guide</button>
+  <button data-t="review">Review</button>
+  <button data-t="train">Train</button>
+  <button data-t="setup">Setup</button>
+</nav>
+</div>
+<main>
+<div class="card stepbar hide" id="stepbar"><span id="stepbar-t"></span>
+  <button class="b" id="stepbar-back">☰ Steps</button></div>
+
+<!-- ============ STEPS (training checklist) ============ -->
+<section id="t-steps" class="hide">
+  <div class="card">
+    <div class="steps-head"><h2>Teach it a route</h2><span class="mute" id="steps-count"></span></div>
+    <div class="bar"><i id="steps-prog"></i></div>
+    <p class="mute" style="margin-bottom:0">Work down the list. Each step ticks itself off; the green one is next.
+      Tap any step to open it.</p>
+  </div>
+  <div id="steplist"></div>
+</section>
+
+<!-- ============ WALK (demonstration) ============ -->
+<section id="t-walk">
+  <div class="card" id="demo-form">
+    <h2>Demonstrate a route</h2>
+    <p class="mute">Walk the route normally. You don't have to label anything while walking:
+      turns and stairs are detected from the IMU, and you fix them afterwards in <b>Review</b>.
+      Just tap <b>Arrived</b> at the door.</p>
+    <label>Starting point</label>
+    <input id="d-start" list="starts" placeholder="e.g. Tisch Library front steps">
+    <datalist id="starts"></datalist>
+    <label>Destination</label>
+    <input id="d-dest" value="Nolop">
+    <label>Facing at the start (so every walk starts the same way)</label>
+    <input id="d-note" placeholder="e.g. back to the library doors, facing the quad">
+    <button class="b p big" id="d-go">Start walk</button>
+    <p class="mute" id="d-left"></p>
+  </div>
+  <div class="card hide" id="demo-live">
+    <div class="msg" id="d-msg">…</div>
+    <div class="grid3" style="margin-top:10px">
+      <div class="stat"><b id="d-dist">0</b><span>metres</span></div>
+      <div class="stat"><b id="d-head">0°</b><span>heading</span></div>
+      <div class="stat"><b id="d-turns">0</b><span>turns seen</span></div>
+    </div>
+    <div class="grid3" style="margin-top:8px">
+      <div class="stat"><b id="d-steps">0</b><span>steps</span></div>
+      <div class="stat"><b id="d-stairs">flat</b><span>stairs</span></div>
+      <div class="stat"><b id="d-time">0</b><span>seconds</span></div>
+    </div>
+    <p class="mute" id="d-events"></p>
+    <div class="grid2" style="margin-top:6px">
+      <button class="b big" id="d-mark">★ Mark this spot</button>
+      <button class="b p big" id="d-arr">✓ Arrived</button>
+    </div>
+    <button class="b danger big" id="d-cancel">Cancel (don't save)</button>
+  </div>
+</section>
+
+<!-- ============ GUIDE (navigation + DAgger) ============ -->
+<section id="t-guide" class="hide">
+  <div class="card" id="nav-form">
+    <h2>Guide me</h2>
+    <label>Route</label>
+    <select id="n-route"></select>
+    <p class="mute" id="n-note"></p>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" id="n-voice" checked style="width:auto;flex:0"> Speak instructions</label>
+    <button class="b p big" id="n-go">Start guiding</button>
+    <p class="mute hide" id="n-untrained">Nothing trained yet. Switch to <b>🎓 Training</b> and follow the steps.</p>
+    <p class="mute">If an instruction is wrong, tap what it should be. Those corrections
+      are saved with the walk (DAgger), so after Review and Train the navigator learns
+      from the places it actually got wrong. This walk counts toward the 10.</p>
+  </div>
+  <div class="hide" id="nav-live">
+    <div id="instr">
+      <svg viewBox="0 0 100 100" id="arrow"></svg>
+      <div class="txt" id="n-txt">Straight</div>
+      <div class="sub" id="n-sub"></div>
+    </div>
+    <div class="bar"><i id="n-prog"></i></div>
+    <p class="mute" id="n-stats" style="text-align:center"></p>
+    <div class="card">
+      <h2>Wrong? It should say…</h2>
+      <div class="grid3 pad">
+        <button class="b" data-c="left">⟲ Left</button>
+        <button class="b" data-c="straight">↑ Straight</button>
+        <button class="b" data-c="right">⟳ Right</button>
+        <button class="b" data-c="stairs_up">Stairs ↑</button>
+        <button class="b" data-c="stairs_down">Stairs ↓</button>
+        <button class="b" data-c="arrived">✓ Arrived</button>
+      </div>
+      <p class="mute" id="n-corr">0 corrections</p>
+      <div class="grid2">
+        <button class="b" id="n-stop">Stop &amp; save</button>
+        <button class="b danger" id="n-cancel">Discard</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REVIEW (clean up the data) ============ -->
+<section id="t-review" class="hide">
+  <div class="card">
+    <h2>Walks</h2>
+    <p class="mute">Check each walk before training: the auto-detected turns and stairs are
+      only suggestions. Tap the map or timeline to put the cursor somewhere, then add or move events.</p>
+    <div id="walklist"></div>
+  </div>
+  <div class="card hide" id="rv">
+    <div class="row" style="justify-content:space-between"><h2 id="rv-title" style="flex:3">Walk</h2>
+      <label class="row" style="color:var(--ink);flex:2;margin:0"><input type="checkbox" id="rv-use" style="width:auto;flex:0"> use for training</label></div>
+    <canvas id="map" height="320"></canvas>
+    <div class="legend" id="legend"></div>
+    <canvas id="tl" height="130" style="margin-top:8px"></canvas>
+    <p class="mute" id="rv-cursor">Cursor: —</p>
+    <div class="grid3 pad">
+      <button class="b" data-add="left">+ Left</button>
+      <button class="b" data-add="right">+ Right</button>
+      <button class="b" data-add="arrived">+ Arrived</button>
+      <button class="b" data-add="stairs_up">+ Stairs ↑</button>
+      <button class="b" data-add="stairs_down">+ Stairs ↓</button>
+      <button class="b" id="rv-reset">Reset</button>
+    </div>
+    <h2 style="margin-top:12px">Events</h2>
+    <div id="evlist"></div>
+    <p class="mute" id="rv-taps"></p>
+    <div class="grid2"><button class="b p" id="rv-save">Save review</button>
+      <button class="b danger" id="rv-del">Delete walk</button></div>
+  </div>
+</section>
+
+<!-- ============ TRAIN ============ -->
+<section id="t-train" class="hide">
+  <div class="card">
+    <h2>Navigator (behavior cloning)</h2>
+    <p class="mute">k-nearest neighbours from the navigator's state (distance, heading, turns made,
+      dead-reckoned position, stairs) to the instruction. Trained on every reviewed walk marked
+      "use", from both partners, at most 10.</p>
+    <div id="routes"></div>
+    <button class="b p big" id="tr-go">Train navigator</button>
+    <div id="tr-out"></div>
+  </div>
+  <div class="card">
+    <h2>Stairs classifier</h2>
+    <p class="mute">Built on the step counter: one prediction per stride from the thigh's angle range,
+      swing speed, stride time and bounce. Record ~30 s of each. Stand still 2 s before you start.
+      These recordings don't count as walks.</p>
+    <div id="st-list"></div>
+    <div class="grid3 pad" id="st-rec">
+      <button class="b" data-s="flat">● Flat</button>
+      <button class="b" data-s="up">● Up</button>
+      <button class="b" data-s="down">● Down</button>
+    </div>
+    <button class="b hide big danger" id="st-stop">■ Stop recording</button>
+    <button class="b p big" id="st-train">Train stairs</button>
+    <div id="st-out"></div>
+  </div>
+</section>
+
+<!-- ============ SETUP ============ -->
+<section id="t-setup" class="hide">
+  <div class="card">
+    <h2>Who's wearing it</h2>
+    <label>Name</label><input id="p-name" list="peoplelist">
+    <datalist id="peoplelist"></datalist>
+    <label>Step length (m), from your 5 m step-counter walks</label>
+    <input id="p-step" type="number" step="0.01" value="0.70">
+    <button class="b p big" id="p-save">Save</button>
+  </div>
+  <div class="card">
+    <h2>Sensor check</h2>
+    <div class="grid3">
+      <div class="stat"><b id="s-head">0°</b><span>heading</span></div>
+      <div class="stat"><b id="s-steps">0</b><span>steps</span></div>
+      <div class="stat"><b id="s-rate">0</b><span>samples/s</span></div>
+    </div>
+    <div class="grid3" style="margin-top:8px">
+      <div class="stat"><b id="s-turns">0</b><span>turns</span></div>
+      <div class="stat"><b id="s-stairs">flat</b><span>stairs</span></div>
+      <div class="stat"><b id="s-cal">no</b><span>gyro calibrated</span></div>
+    </div>
+    <p class="mute">Wear it on the front of the thigh like the step counter. Stand still 2 s (gyro
+      calibrates), tap Zero, then turn a full circle on the spot: heading should come back near
+      ±360°. Turning left is +.</p>
+    <button class="b big" id="s-zero">Zero</button>
+    <p class="mute" id="s-msg"></p>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const NAMES = {straight:"Straight", left:"Turn left", right:"Turn right", stairs_up:"Stairs up", stairs_down:"Stairs down", arrived:"Arrived"};
+const COLOR = a => getComputedStyle(document.documentElement).getPropertyValue("--"+a).trim() || "#888";
+let S = null, tab = "steps", mode = "train", prevLive = "idle", openStep = null, lastCur = null, lastInstr = null, sel = null, R = null, cursor = null;
+
+async function api(path, body){
+  const r = await fetch(path, body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  const j = await r.json().catch(()=>({ok:false,error:"bad reply"}));
+  if (j && j.ok === false && j.error) toast(j.error);
+  return j;
+}
+function toast(t){ const m = document.createElement("div"); m.textContent = t;
+  m.style.cssText = "position:fixed;left:12px;right:12px;bottom:18px;background:#222;color:#fff;padding:12px;border-radius:12px;z-index:9;text-align:center";
+  document.body.appendChild(m); setTimeout(()=>m.remove(), 3500); }
+function say(t){ if (!$("#n-voice").checked || !window.speechSynthesis) return;
+  speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(t)); }
+const fmt = (x, d=0) => (x==null || isNaN(x)) ? "—" : Number(x).toFixed(d);
+
+// ---- little per-phone memory (works without it, e.g. private browsing)
+const mem = {get(k){ try { return localStorage.getItem("cn-"+k); } catch(e){ return null; } },
+             set(k,v){ try { v==null ? localStorage.removeItem("cn-"+k) : localStorage.setItem("cn-"+k, v); } catch(e){} }};
+
+// ---- tabs and modes
+$$("#tabs button").forEach(b => b.onclick = () => show(b.dataset.t));
+function show(t){ if (tab !== t || !location.hash.startsWith("#"+t)) history.replaceState(null, "", "#"+t); tab = t; $$("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  $$("main>section").forEach(s => s.classList.toggle("hide", s.id !== "t-"+t)); render(); scrollTo(0,0); }
+$$("#modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.m));
+function setMode(m){ mode = m; mem.set("mode", m);
+  $$("#modeseg button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  $("#tabs").classList.toggle("hide", m === "nav");
+  if (m === "nav") show("guide"); else if (tab === "guide" && !(S && S.live && S.live.mode === "nav")) show("steps"); else render(); }
+
+// ---- polling
+async function poll(){
+  try { S = await (await fetch("/api/state")).json(); $("#dot").style.background = "#4ade80"; render(); }
+  catch(e){ $("#dot").style.background = "#f87171"; }
+  const live = S && S.live && S.live.mode !== "idle";
+  setTimeout(poll, live || tab === "setup" || tab === "steps" ? 400 : 1500);
+}
+
+function render(){
+  if (!S) return;
+  const L = S.live || {};
+  $("#who").textContent = L.person || "laptop";
+  $("#wcount").textContent = `${S.walks_used}/${S.max_walks} walks`;
+  $("#wcount").style.background = S.walks_used >= S.max_walks ? "#b91c1c" : "";
+  if (!S.live_available) { ["walk","guide"].forEach(t => $(`#tabs [data-t=${t}]`).disabled = true); if (tab==="walk"||tab==="guide") return show("review"); }
+  // A walk or guided walk just started (maybe from the Steps list): go to its screen.
+  if (L.mode && L.mode !== prevLive) { const was = prevLive; prevLive = L.mode;
+    if (L.mode === "demo" && tab !== "walk") return show("walk");
+    if (L.mode === "nav" && tab !== "guide") return show("guide");
+    if (L.mode === "idle" && was === "nav" && mode === "train" && tab === "guide") { /* stays: stop handler moves to Review */ } }
+  renderStepbar();
+  $("#starts").innerHTML = S.routes.map(r => `<option value="${esc(r.start)}">`).join("");
+  $("#peoplelist").innerHTML = Object.keys(S.people).map(p => `<option value="${esc(p)}">`).join("");
+  if (tab === "steps") renderSteps(L);
+  if (tab === "walk") renderWalk(L);
+  if (tab === "guide") renderGuide(L);
+  if (tab === "review") renderWalkList();
+  if (tab === "train") renderTrain(L);
+  if (tab === "setup") renderSetup(L);
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ---- WALK
+function renderWalk(L){
+  const on = L.mode === "demo";
+  $("#demo-form").classList.toggle("hide", on); $("#demo-live").classList.toggle("hide", !on);
+  const left = S.max_walks - S.walks_used;
+  $("#d-left").textContent = left > 0 ? `${left} of ${S.max_walks} walks left (reviewed walks used for training, both partners).` : "You've used all 10 walks: un-tick 'use' on one in Review to free a slot.";
+  if (!on) return;
+  $("#d-msg").textContent = L.message; $("#d-msg").style.background = L.phase === "go" ? "var(--acc2)" : "var(--warn)"; $("#d-msg").style.color = "#fff";
+  const r = L.row || {};
+  $("#d-dist").textContent = fmt(r.d); $("#d-head").textContent = fmt(r.h) + "°"; $("#d-turns").textContent = r.turns ?? 0;
+  $("#d-steps").textContent = r.steps ?? 0; $("#d-stairs").textContent = r.on || "flat"; $("#d-time").textContent = fmt(L.rec_s);
+  $("#d-events").textContent = (L.auto_events||[]).map(e => NAMES[e.type]).join(" · ");
+  $("#d-mark").disabled = $("#d-arr").disabled = L.phase !== "go";
+}
+$("#d-go").onclick = async () => {
+  const start = $("#d-start").value.trim(); if (!start) return toast("Name the starting point");
+  await api("/api/start", {kind:"demo", start, dest:$("#d-dest").value, note:$("#d-note").value});
+};
+$("#d-mark").onclick = () => { api("/api/tap", {kind:"mark", label:"mark"}); navigator.vibrate && navigator.vibrate(40); };
+$("#d-arr").onclick = async () => { const j = await api("/api/tap", {kind:"arrived", label:"arrived"}); if (j.saved) { toast("Saved. Now review it."); openWalk(j.saved); show("review"); } };
+$("#d-cancel").onclick = () => confirm("Throw this walk away?") && api("/api/stop", {save:false});
+
+// ---- GUIDE
+const ARROWS = {
+  straight:'<path d="M50 10 L78 42 H60 V90 H40 V42 H22 Z" fill="#fff"/>',
+  left:'<path d="M12 40 L40 14 V30 H62 Q84 30 84 52 V90 H64 V54 Q64 50 60 50 H40 V66 Z" fill="#fff"/>',
+  right:'<path d="M88 40 L60 14 V30 H38 Q16 30 16 52 V90 H36 V54 Q36 50 40 50 H60 V66 Z" fill="#fff"/>',
+  stairs_up:'<path d="M10 86 H30 V68 H50 V50 H70 V32 H90 V86 Z" fill="#fff" opacity=".9"/><path d="M28 30 L46 12 L46 24 L60 24 L60 36 L46 36 L46 48 Z" fill="#fff" transform="rotate(-45 44 30)"/>',
+  stairs_down:'<path d="M10 32 H30 V50 H50 V68 H70 V86 H10 Z" fill="#fff" opacity=".9"/><path d="M60 22 L78 40 L66 40 L66 54 L54 54 L54 40 L42 40 Z" fill="#fff" transform="rotate(-45 60 38)"/>',
+  arrived:'<circle cx="50" cy="50" r="38" fill="none" stroke="#fff" stroke-width="9"/><path d="M30 52 L45 66 L72 36" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>'
+};
+function renderGuide(L){
+  const on = L.mode === "nav";
+  $("#nav-form").classList.toggle("hide", on); $("#nav-live").classList.toggle("hide", !on);
+  if (!on) {
+    const rs = S.policy.routes || [], cur = $("#n-route").value;
+    const opts = rs.map(k => `<option ${k===cur?"selected":""}>${esc(k)}</option>`).join("");
+    if ($("#n-route").innerHTML !== opts) $("#n-route").innerHTML = opts || "";
+    const info = S.routes.find(r => r.key === $("#n-route").value);
+    $("#n-note").textContent = rs.length ? (info ? `Start facing: ${info.note || "(no note)"} · about ${fmt(info.length_m)} m` : "") : "No trained navigator yet: demonstrate, review, then train.";
+    $("#n-go").disabled = !rs.length; $("#n-untrained").classList.toggle("hide", !!rs.length || mode !== "nav"); lastInstr = null; return;
+  }
+  const r = L.row || {};
+  if (L.phase !== "go") {
+    $("#instr").style.background = "var(--warn)"; $("#arrow").innerHTML = ""; $("#n-txt").textContent = "Hold still";
+    $("#n-sub").textContent = L.message; return;
+  }
+  const a = L.instruction || "straight";
+  $("#instr").style.background = COLOR(a); $("#arrow").innerHTML = ARROWS[a]; $("#n-txt").textContent = NAMES[a];
+  const conf = L.probs ? Math.round(100*(L.probs[a]||0)) : null;
+  $("#n-sub").textContent = (a === "left" || a === "right" || a.startsWith("stairs")) ? `coming up within ~${S.lookahead_m} m${conf!=null?` · ${conf}% sure`:""}` : (conf!=null?`${conf}% sure`:"");
+  if (a !== lastInstr) { if (lastInstr !== null) { say(NAMES[a]); navigator.vibrate && navigator.vibrate(a==="straight"?60:[120,80,120]); } lastInstr = a; }
+  $("#n-prog").style.width = L.progress != null ? (100*L.progress).toFixed(0)+"%" : "0";
+  $("#n-stats").textContent = `${fmt(r.d)} m · heading ${fmt(r.h)}° · ${r.turns||0} turns · ${r.on||"flat"}`;
+  $("#n-corr").textContent = `${L.n_taps} correction${L.n_taps===1?"":"s"}`;
+}
+$("#n-route").onchange = render;
+$("#n-go").onclick = async () => {
+  const key = $("#n-route").value, info = S.routes.find(r => r.key === key) || {};
+  const [start, dest] = key.split(" -> ");
+  if (window.speechSynthesis && $("#n-voice").checked) say("Stand still");   // unlocks speech on iPhone
+  await api("/api/start", {kind:"nav", start, dest, note: info.note || ""});
+};
+$$("#nav-live [data-c]").forEach(b => b.onclick = async () => {
+  const lab = b.dataset.c; navigator.vibrate && navigator.vibrate(30);
+  const j = await api("/api/tap", {kind:"correct", label:lab});
+  if (j.saved) { say("Arrived"); if (mode === "train") { toast("Saved as a correction walk: review it"); openWalk(j.saved); show("review"); } else toast("You've arrived! (saved; review it in Training mode)"); }
+});
+$("#n-stop").onclick = async () => { const j = await api("/api/stop", {save:true}); if (j.saved) { if (mode === "train") { openWalk(j.saved); show("review"); } else toast("Saved. Review it in Training mode."); } };
+$("#n-cancel").onclick = () => confirm("Discard this walk?") && api("/api/stop", {save:false});
+
+// ---- REVIEW
+function renderWalkList(){
+  const html = S.walks.slice().reverse().map(w => `<div class="walk ${sel===w.id?"sel":""}" data-w="${esc(w.id)}">
+    <div><b>${esc(w.route ? w.route.start : "?")}</b> <span class="mute">→ ${esc(w.route ? w.route.dest : "")}</span><br>
+    <span class="mute">${esc(w.person)} · ${w.kind}${w.corrections?` (${w.corrections} fixes)`:""} · ${fmt(w.length_m)} m · ${esc(w.id.slice(4,6)+"/"+w.id.slice(6,8)+" "+w.id.slice(9,11)+":"+w.id.slice(11,13))}</span></div>
+    <span class="tag ${w.reviewed && w.use ? "ok":""}">${w.reviewed ? (w.use ? "✓ used" : "not used") : "review me"}</span></div>`).join("") || '<p class="mute">No walks yet.</p>';
+  if ($("#walklist").dataset.h !== html) { $("#walklist").innerHTML = html; $("#walklist").dataset.h = html;
+    $$("#walklist [data-w]").forEach(d => d.onclick = () => openWalk(d.dataset.w)); }
+}
+async function openWalk(id){
+  sel = id; const j = await (await fetch("/api/walk?id="+encodeURIComponent(id))).json();
+  R = j; R.events = (j.events||[]).map(e => ({...e})); cursor = null;
+  const t0 = R.meta.t0 ?? (R.rows[0] ? R.rows[0].t : 0); R.t0 = t0;
+  $("#rv").classList.remove("hide");
+  $("#rv-title").textContent = `${R.meta.route ? R.meta.route.start : "?"} → ${R.meta.route ? R.meta.route.dest : ""} (${R.meta.kind}, ${R.meta.person})`;
+  $("#rv-use").checked = j.use !== false;
+  const taps = (R.meta.taps||[]);
+  $("#rv-taps").textContent = taps.length ? "Taps on the walk: " + taps.map(t => `${t.kind==="correct"?"fix→"+NAMES[t.label]:t.label} @${fmt(t.t-t0)}s${t.shown?` (said ${NAMES[t.shown]})`:""}`).join(", ") : "";
+  $("#legend").innerHTML = Object.keys(NAMES).map(a => `<span><i class="swatch" style="background:${COLOR(a)}"></i>${NAMES[a]}</span>`).join("") + '<span>★ mark ✎ correction</span>';
+  renderWalkList(); drawReview(); $("#rv").scrollIntoView({behavior:"smooth"});
+}
+function labelTrack(rows, events, look){
+  const ts = rows.map(r => r.t), ds = rows.map(r => r.d);
+  const dAt = t => { if (t <= ts[0]) return ds[0]; for (let i=1;i<ts.length;i++) if (ts[i] >= t) { const f=(t-ts[i-1])/((ts[i]-ts[i-1])||1); return ds[i-1]+f*(ds[i]-ds[i-1]); } return ds[ds.length-1]; };
+  const evs = events.slice().sort((a,b)=>a.t-b.t);
+  const arr = evs.find(e => e.type==="arrived"); const arrive = arr ? arr.t : null;
+  const spans = evs.filter(e => e.type!=="arrived" && e.type!=="straight").map(e => [dAt(e.t)-look, e.t, e.t_end ?? e.t, e.type]);
+  return rows.map(r => {
+    if (arrive!=null && r.t >= arrive) return r.t <= arrive+4 ? "arrived" : null;
+    for (const [d0,te,tend,typ] of spans) if (r.t <= tend && (r.d >= d0 || r.t >= te-1)) return typ;
+    return "straight";
+  });
+}
+function fitCanvas(c){ const r = devicePixelRatio||1, w = c.clientWidth, h = +c.getAttribute("height"); c.width = w*r; c.height = h*r; c.style.height = h+"px"; const g = c.getContext("2d"); g.setTransform(r,0,0,r,0,0); return [g,w,h]; }
+let mapT = null, tlT = null;
+function drawReview(){
+  if (!R || !R.rows.length) return;
+  const rows = R.rows, labs = labelTrack(rows, R.events, S.lookahead_m);
+  // map: forward at the start = up the screen, left turns go left
+  const [g,w,h] = fitCanvas($("#map"));
+  const P = rows.map(r => [-r.y, -r.x]);
+  let xs = P.map(p=>p[0]), ys = P.map(p=>p[1]);
+  const mnx=Math.min(...xs,-5), mxx=Math.max(...xs,5), mny=Math.min(...ys,-5), mxy=Math.max(...ys,5);
+  const sc = Math.min((w-30)/(mxx-mnx), (h-30)/(mxy-mny));
+  const ox = w/2 - sc*(mnx+mxx)/2, oy = h/2 - sc*(mny+mxy)/2;
+  mapT = p => [ox + sc*p[0], oy + sc*p[1]];
+  g.lineWidth = 5; g.lineCap = "round";
+  for (let i=1;i<P.length;i++){ const a=mapT(P[i-1]), b=mapT(P[i]); g.strokeStyle = COLOR(labs[i]||"straight"); g.globalAlpha = labs[i]?1:.3; g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke(); }
+  g.globalAlpha = 1;
+  const at = t => { let k = 0; for (let i=0;i<rows.length;i++) if (rows[i].t <= t) k = i; return k; };
+  const dotAt = (t, col, txt) => { const [x,y] = mapT(P[at(t)]); g.fillStyle = col; g.beginPath(); g.arc(x,y,7,0,7); g.fill(); if (txt){ g.fillStyle = getComputedStyle(document.body).color; g.font = "bold 13px system-ui"; g.fillText(txt, x+9, y-6);} };
+  const [sx,sy] = mapT(P[0]); g.fillStyle = "#111"; g.fillRect(sx-5,sy-5,10,10);
+  R.events.forEach((e,i) => dotAt(e.t, COLOR(e.type), String(i+1)));
+  (R.meta.taps||[]).forEach(t => { const [x,y] = mapT(P[at(t.t)]); g.fillStyle = "#f59e0b"; g.font = "16px system-ui"; g.fillText(t.kind==="correct"?"✎":"★", x-6, y+18); });
+  if (cursor!=null){ const [x,y] = mapT(P[at(cursor)]); g.strokeStyle = "#000"; g.lineWidth = 2; g.beginPath(); g.arc(x,y,10,0,7); g.stroke(); }
+  // timeline: heading over time + label strip
+  const [q,W,H] = fitCanvas($("#tl"));
+  const T0 = rows[0].t, T1 = rows[rows.length-1].t, hs = rows.map(r=>r.h);
+  const hmin = Math.min(...hs)-10, hmax = Math.max(...hs)+10;
+  const X = t => 8 + (W-16)*(t-T0)/((T1-T0)||1), Y = v => 8 + (H-40)*(1-(v-hmin)/((hmax-hmin)||1));
+  tlT = {X, T: x => T0 + (x-8)/(W-16)*(T1-T0)};
+  q.strokeStyle = COLOR("straight"); q.lineWidth = 2; q.beginPath(); rows.forEach((r,i)=> i?q.lineTo(X(r.t),Y(r.h)):q.moveTo(X(r.t),Y(r.h))); q.stroke();
+  rows.forEach((r,i)=>{ if(!i) return; q.fillStyle = labs[i] ? COLOR(labs[i]) : "transparent"; q.fillRect(X(rows[i-1].t), H-26, X(r.t)-X(rows[i-1].t)+1, 12); if (r.on && r.on!=="flat"){ q.fillStyle = COLOR("stairs_"+r.on); q.fillRect(X(rows[i-1].t), H-10, X(r.t)-X(rows[i-1].t)+1, 6);} });
+  R.events.forEach((e,i)=>{ q.strokeStyle = COLOR(e.type); q.lineWidth = 2; q.beginPath(); q.moveTo(X(e.t),0); q.lineTo(X(e.t),H-28); q.stroke(); q.fillStyle = COLOR(e.type); q.font="bold 12px system-ui"; q.fillText(i+1, X(e.t)+3, 12); });
+  (R.meta.taps||[]).forEach(t => { q.fillStyle="#f59e0b"; q.fillText(t.kind==="correct"?"✎":"★", X(t.t)-5, H-30); });
+  if (cursor!=null){ q.strokeStyle="#000"; q.setLineDash([4,3]); q.beginPath(); q.moveTo(X(cursor),0); q.lineTo(X(cursor),H); q.stroke(); q.setLineDash([]); }
+  q.fillStyle = getComputedStyle(document.body).color; q.font = "11px system-ui"; q.fillText("heading", 10, H-30);
+  const r = cursor!=null ? rows[at(cursor)] : null;
+  $("#rv-cursor").textContent = r ? `Cursor: ${fmt(cursor-R.t0,1)} s · ${fmt(r.d,1)} m · heading ${fmt(r.h)}° · ${r.on}` : "Cursor: tap the map or the timeline";
+  // event list
+  $("#evlist").innerHTML = R.events.map((e,i)=>`<div class="ev" data-i="${i}">
+    <select data-k="type">${Object.keys(NAMES).filter(a=>a!=="straight").map(a=>`<option value="${a}" ${a===e.type?"selected":""}>${i+1}. ${NAMES[a]}</option>`).join("")}</select>
+    <button class="b" data-k="m">−1s</button><span class="mute">${fmt(e.t-R.t0,1)}s${e.t_end!=null?`→${fmt(e.t_end-R.t0,1)}`:""}${e.auto?" auto":e.from?" "+e.from:""}</span>
+    <button class="b" data-k="p">+1s</button><button class="b danger" data-k="x">✕</button></div>`).join("") || '<p class="mute">No events: every moment is labelled "straight".</p>';
+  $$("#evlist .ev").forEach(div => { const i = +div.dataset.i;
+    div.querySelector("[data-k=type]").onchange = ev => { R.events[i].type = ev.target.value; if (ev.target.value.startsWith("stairs") && R.events[i].t_end==null) R.events[i].t_end = R.events[i].t+6; drawReview(); };
+    div.querySelector("[data-k=m]").onclick = () => { shift(i,-1); };
+    div.querySelector("[data-k=p]").onclick = () => { shift(i, 1); };
+    div.querySelector("[data-k=x]").onclick = () => { R.events.splice(i,1); drawReview(); };
+  });
+}
+function shift(i, s){ const e = R.events[i]; e.t += s; if (e.t_end!=null) e.t_end += s; R.events.sort((a,b)=>a.t-b.t); drawReview(); }
+$("#map").onclick = ev => { if (!R || !mapT) return; const b = ev.target.getBoundingClientRect(), x = ev.clientX-b.left, y = ev.clientY-b.top;
+  let best = 0, bd = 1e9; R.rows.forEach((r,i)=>{ const [px,py] = mapT([-r.y,-r.x]); const d=(px-x)**2+(py-y)**2; if (d<bd){bd=d;best=i;} }); cursor = R.rows[best].t; drawReview(); };
+$("#tl").onclick = ev => { if (!R || !tlT) return; const b = ev.target.getBoundingClientRect(); cursor = tlT.T(ev.clientX-b.left); drawReview(); };
+$$("[data-add]").forEach(b => b.onclick = () => { if (!R) return; if (cursor==null) return toast("Tap the map or timeline first");
+  const typ = b.dataset.add; if (typ==="arrived") R.events = R.events.filter(e=>e.type!=="arrived");
+  const e = {t: cursor, type: typ, from: "review"}; if (typ.startsWith("stairs")) e.t_end = cursor + 6;
+  R.events.push(e); R.events.sort((a,b)=>a.t-b.t); drawReview(); });
+$("#rv-reset").onclick = async () => { if (!R) return;
+  const j = await (await fetch("/api/walk?suggest=1&id="+encodeURIComponent(sel))).json();
+  R.events = j.events; toast("Back to the auto-detected events (not saved yet)"); drawReview(); };
+$("#rv-save").onclick = async () => { if (!R) return;
+  if (!R.events.some(e=>e.type==="arrived")) return toast("Add where you arrived first");
+  const j = await api("/api/labels", {id: sel, events: R.events, use: $("#rv-use").checked});
+  if (j.ok) { toast("Saved ✓"); await new Promise(r => setTimeout(r, 300)); S = await (await fetch("/api/state")).json();
+    const next = S.walks.find(w => !w.reviewed); if (next) openWalk(next.id); else if (mode === "train") { openStep = null; show("steps"); } } };
+$("#rv-del").onclick = async () => { if (!R || !confirm("Delete this walk for good?")) return; await api("/api/delete", {id: sel}); R = null; sel = null; $("#rv").classList.add("hide"); };
+addEventListener("resize", () => drawReview());
+
+// ---- TRAIN
+function renderTrain(L){
+  $("#routes").innerHTML = S.routes.length ? `<table><tr><th>Route</th><th>Walks</th><th>Length</th></tr>${S.routes.map(r=>`<tr><td>${esc(r.key)}</td><td>${r.walks}</td><td>${fmt(r.length_m)} m</td></tr>`).join("")}</table>` : '<p class="mute">No walks yet.</p>';
+  const busy = !!S.training; $("#tr-go").disabled = $("#st-train").disabled = busy;
+  $("#tr-go").textContent = S.training==="policy" ? "Training…" : "Train navigator";
+  const lt = S.last_train || {}, lo = S.policy.lowo;
+  let out = "";
+  if (lt.what === "policy" && lt.ok === false) out += `<p class="msg" style="color:var(--bad)">${esc(lt.error)}</p>`;
+  if (S.policy.ready && lo) {
+    out += `<p class="msg">Trained on ${S.policy.trained_on} walks. Leave-one-walk-out balanced accuracy: <b>${lo.balanced_accuracy!=null?Math.round(100*lo.balanced_accuracy)+"%":"— ("+esc(lo.note)+")"}</b></p>`;
+    if (lo.recall) out += `<table><tr><th>Instruction</th><th>Recall</th></tr>${Object.entries(lo.recall).map(([a,r])=>`<tr><td><i class="swatch" style="background:${COLOR(a)}"></i>${NAMES[a]}</td><td>${Math.round(100*r)}%</td></tr>`).join("")}</table>`;
+    if (lo.weights) out += `<p class="mute">Feature weights chosen: ${Object.entries(lo.weights).map(([k,v])=>`${k} ×${v}`).join(", ")}</p>`;
+  }
+  if (lt.skipped_over_limit && lt.skipped_over_limit.length) out += `<p class="mute">Left out (over 10): ${lt.skipped_over_limit.join(", ")}</p>`;
+  $("#tr-out").innerHTML = out;
+  // stairs
+  const recs = S.stairs.recordings || [];
+  const by = {flat:[],up:[],down:[]}; recs.forEach(r => (by[r.cls]||[]).push(r));
+  $("#st-list").innerHTML = Object.entries(by).map(([c,rs])=>`<div class="row" style="margin-bottom:4px"><b style="flex:0 0 52px">${c}</b><span class="mute" style="flex:3">${rs.length} recordings, ${fmt(rs.reduce((a,r)=>a+r.seconds,0))} s</span>${rs.length?`<button class="b danger" style="flex:0;padding:6px 10px" data-sd="${esc(rs[rs.length-1].id)}">✕ last</button>`:""}</div>`).join("");
+  $$("[data-sd]").forEach(b => b.onclick = () => confirm("Delete that recording?") && api("/api/delete", {stairs_id: b.dataset.sd}));
+  const rec = L.mode === "stairs";
+  $("#st-rec").classList.toggle("hide", rec || !S.live_available); $("#st-stop").classList.toggle("hide", !rec);
+  if (rec) $("#st-stop").textContent = `■ Stop recording ${L.stairs_cls} (${fmt(L.rec_s)} s)`;
+  let so = "";
+  if (lt.what === "stairs") so = lt.ok ? `<p class="msg">Strides: ${Object.entries(lt.strides).map(([k,v])=>`${k} ${v}`).join(", ")} · leave-one-out accuracy <b>${Math.round(100*lt.loo_accuracy)}%</b></p>` : `<p class="msg" style="color:var(--bad)">${esc(lt.error)}</p>`;
+  else if (S.stairs.ready) so = `<p class="mute">Stairs model ready (${Object.entries(S.stairs.counts||{}).map(([k,v])=>`${v} ${k}`).join(", ")} strides).</p>`;
+  $("#st-out").innerHTML = so;
+}
+$("#tr-go").onclick = () => api("/api/train", {what:"policy"});
+$("#st-train").onclick = () => api("/api/train", {what:"stairs"});
+$$("[data-s]").forEach(b => b.onclick = () => api("/api/start", {kind:"stairs", cls:b.dataset.s}));
+$("#st-stop").onclick = () => api("/api/stop", {save:true});
+
+// ---- SETUP
+function renderSetup(L){
+  const r = L.row || {};
+  $("#s-head").textContent = fmt(r.h)+"°"; $("#s-steps").textContent = r.steps ?? 0; $("#s-rate").textContent = L.rate ?? "—";
+  $("#s-turns").textContent = r.turns ?? 0; $("#s-stairs").textContent = r.on || "flat"; $("#s-cal").textContent = L.calibrated ? "yes" : "no";
+  $("#s-msg").textContent = (L.message||"") + (L.bias ? `  gyro bias ${L.bias.join(", ")} °/s` : "");
+  if (document.activeElement !== $("#p-name") && document.activeElement !== $("#p-step") && !$("#p-name").value) {
+    $("#p-name").value = L.person || ""; const p = S.people[L.person]; if (p) $("#p-step").value = p.step_length_m;
+  }
+}
+$("#p-name").onchange = () => { const p = S && S.people[$("#p-name").value.trim().toLowerCase()]; if (p) $("#p-step").value = p.step_length_m; };
+$("#p-save").onclick = async () => { const name = $("#p-name").value.trim(); if (!name) return toast("Enter a name");
+  const j = await api("/api/person", {name, step_length_m: +$("#p-step").value}); if (j.ok) toast(`Wearer: ${name}`); };
+$("#s-zero").onclick = () => api("/api/start", {kind:"zero"});
+
+// ---- STEPS: the training checklist
+function stepsList(L){
+  const walks = S.walks || [], people = S.people || {}, recs = (S.stairs.recordings || []);
+  const demos = walks.filter(w => w.kind === "demo"), daggers = walks.filter(w => w.kind === "dagger");
+  const unreviewed = walks.filter(w => !w.reviewed);
+  const secs = c => recs.filter(r => r.cls === c).reduce((a,r) => a + (r.seconds||0), 0);
+  const skipStairs = mem.get("skipStairs") === "1";
+  const upToDate = S.policy.ready && S.policy.trained_on === Math.min(S.walks_used, S.max_walks) && S.walks_used > 0;
+  const perPerson = {}; demos.forEach(w => perPerson[w.person] = (perPerson[w.person]||0) + 1);
+  const left = S.max_walks - S.walks_used, rec = L.mode === "stairs";
+  const lt = S.last_train || {};
+  return [
+    {id:"who", title:"Put it on, pick who's wearing it", done: !!(L.person && people[L.person]),
+     body: `<ol><li>Strap the board to the <b>front of your thigh</b>, just above the knee, like the step counter (+X arrow toward the knee), firmly.</li>
+       <li>Tap your name. Each person's step length comes from their 5 m step-counter walks.</li></ol>
+       <div class="btnrow">${Object.entries(people).map(([n,p]) => `<button class="b ${n===L.person?"p":""}" data-who="${esc(n)}">${esc(n)} · ${p.step_length_m} m</button>`).join("")}
+       <button class="b" data-go="setup">+ Someone new</button></div>`},
+    {id:"sensor", title:"Check the sensor", done: mem.get("sensorOK") === "1",
+     body: `<ol><li>Stand still until <b>calibrated</b> says yes (about 3 s).</li>
+       <li>Tap <b>Zero</b>, then turn one full circle to the <b>left</b> on the spot. Heading should read about <b>+360°</b> (300 to 420 is fine).</li>
+       <li>Walk 10 steps: steps should go up by about 10.</li></ol>
+       <div class="grid3"><div class="stat"><b data-live="h">0°</b><span>heading</span></div>
+       <div class="stat"><b data-live="steps">0</b><span>steps</span></div>
+       <div class="stat"><b data-live="cal">no</b><span>calibrated</span></div></div>
+       <div class="btnrow"><button class="b" data-act="zero">Zero</button><button class="b p" data-act="sensorOK">✓ Looks right</button></div>
+       <div class="tip">Way off? Tighten the strap and try again. If steps don't count, check the cable (Setup tab shows samples/s, about 100).</div>`},
+    {id:"stairs", title:"Record stairs (~30 s each)", done: skipStairs || ["flat","up","down"].every(c => secs(c) >= 20),
+     body: `<ol><li>Find a staircase with 10+ steps.</li><li>For each kind: <b>stand still 2 s</b>, tap record, walk it at your normal pace, tap Stop. Go up and down a few times to get 30 s.</li></ol>
+       <table>${["flat","up","down"].map(c => `<tr><td>${{flat:"Flat walking",up:"Stairs up",down:"Stairs down"}[c]}</td><td>${fmt(secs(c))} s</td><td>${secs(c)>=20?"✓":""}</td></tr>`).join("")}</table>
+       ${rec ? `<button class="b danger big" data-act="stairsStop">■ Stop recording ${esc(L.stairs_cls)} (<span data-live="rec">0</span> s)</button>`
+             : `<div class="btnrow">${["flat","up","down"].map(c => `<button class="b" data-rec="${c}">● ${c}</button>`).join("")}</div>`}
+       <div class="btnrow"><button class="b" data-act="skipStairs">${skipStairs ? "Undo skip" : "No stairs on our route: skip"}</button></div>
+       <div class="tip">These recordings don't count toward your 10 walks.</div>`},
+    {id:"stairsTrain", title:"Train the stairs classifier", done: skipStairs || S.stairs.ready,
+     body: `<p>Teaches it what a stride on stairs looks like from the thigh (one prediction per stride).</p>
+       <button class="b p big" data-act="trainStairs" ${S.training?"disabled":""}>${S.training==="stairs"?"Training…":"Train stairs"}</button>
+       ${lt.what==="stairs" ? (lt.ok ? `<div class="tip">Accuracy (leave-one-out): <b>${Math.round(100*lt.loo_accuracy)}%</b>. Below about 80%? Record a bit more of the weakest kind and train again.</div>` : `<div class="tip" style="color:var(--bad)">${esc(lt.error)}</div>`) : ""}`},
+    {id:"demo", title:"Walk the route (demonstrations)", done: demos.length >= 2,
+     body: `<div class="tip"><b>Plan your 10 walks</b>, for example 3 demos each (6), which leaves 4 for correction walks in step 8.</div>
+       <ol><li>Pick a starting spot you can find exactly again, and decide which way you'll face (e.g. "back to the library doors").</li>
+       <li>On <b>Walk</b>: type the start and the facing, tap <b>Start walk</b>, stand still until it says <b>Go</b>.</li>
+       <li>Walk to Nolop normally. <b>Don't label anything</b>; turns and stairs are picked up automatically.</li>
+       <li>Tap <b>✓ Arrived</b> at the door. Swap wearers and repeat.</li></ol>
+       <p class="mute">Demos so far: ${Object.entries(perPerson).map(([n,c]) => `${esc(n)} ${c}`).join(", ") || "none"} · ${left} of ${S.max_walks} walks left</p>
+       <button class="b p big" data-go="walk">Go to Walk</button>`},
+    {id:"review", title:"Review every walk", done: walks.length > 0 && unreviewed.length === 0,
+     body: `<ol><li>Open the walk. The map shows the path; each numbered dot is an event.</li>
+       <li>Every <b>turn</b> should match a real turn: ✕ delete fake ones; to add a missed one, tap the map where it happened, then <b>+ Left</b>/<b>+ Right</b>.</li>
+       <li><b>Stairs</b> should cover the stairs; move events with −1s/+1s.</li>
+       <li><b>Arrived</b> should be at the door. Then <b>Save review</b>.</li></ol>
+       ${unreviewed.length ? `<p><b>${unreviewed.length} to review:</b></p><div class="btnrow">${unreviewed.map(w => `<button class="b" data-review="${esc(w.id)}">${esc(w.person)} · ${w.kind} · ${fmt(w.length_m)} m</button>`).join("")}</div>` : `<p class="mute">${walks.length ? "All reviewed ✓" : "No walks yet."}</p>`}
+       <div class="tip">A walk that went wrong (got lost, sensor slipped)? Untick "use for training" so it doesn't use one of your 10.</div>`},
+    {id:"train", title:"Train the navigator", done: upToDate,
+     body: `<p>Learns, from your reviewed walks (both partners'), which instruction goes with each point along the route.</p>
+       <button class="b p big" data-act="train" ${S.training?"disabled":""}>${S.training==="policy"?"Training…":"Train navigator"}</button>
+       ${S.policy.ready && S.policy.lowo ? `<div class="tip">Trained on ${S.policy.trained_on} walks. Tested on each walk it didn't train on: <b>${S.policy.lowo.balanced_accuracy!=null ? Math.round(100*S.policy.lowo.balanced_accuracy)+"%" : "needs 2+ walks of a route"}</b>${S.policy.lowo.recall ? "<br>" + Object.entries(S.policy.lowo.recall).map(([a,r]) => `${NAMES[a]} ${Math.round(100*r)}%`).join(" · ") : ""}</div>` : ""}
+       ${lt.what==="policy" && lt.ok===false ? `<div class="tip" style="color:var(--bad)">${esc(lt.error)}</div>` : ""}
+       <p class="mute">An instruction under about 70%? Check its events in Review, or add a walk.</p>`},
+    {id:"dagger", title:"Test it and correct it (DAgger)", done: daggers.length > 0 && unreviewed.length === 0 && upToDate,
+     body: `<ol><li>On <b>Guide</b>: pick the route, stand at the start facing the same way, <b>Start guiding</b>, stand still until it says go.</li>
+       <li>Follow it. <b>When it's wrong, tap what it should say</b> and keep walking the right way.</li>
+       <li>At the door tap <b>✓ Arrived</b> (or Stop &amp; save).</li>
+       <li>Then <b>review</b> that walk (step 6) and <b>train again</b> (step 7). These steps reopen by themselves.</li></ol>
+       <p class="mute">Correction walks so far: ${daggers.length} · ${left} of ${S.max_walks} walks left</p>
+       <button class="b p big" data-go="guide" ${S.policy.ready?"":"disabled"}>Go to Guide</button>`},
+  ];
+}
+function currentStep(steps){ const i = steps.findIndex(s => !s.done); return i < 0 ? steps.length : i; }
+function renderSteps(L){
+  const steps = stepsList(L), cur = currentStep(steps), nDone = steps.filter(s => s.done).length;
+  if (cur !== lastCur) { if (lastCur !== null) openStep = null; lastCur = cur; }
+  $("#steps-count").textContent = `${nDone} of ${steps.length} done`;
+  $("#steps-prog").style.width = (100*nDone/steps.length) + "%";
+  const open = openStep ?? (steps[cur] ? steps[cur].id : null);
+  let html = steps.map((st, i) => { const state = st.done ? "done" : i === cur ? "now" : "later";
+    return `<div class="step ${state}" id="step-${st.id}"><div class="num">${st.done ? "✓" : i+1}</div><div>
+      <div class="ttl" data-open="${st.id}"><b>${st.title}</b><span class="chip ${state==="done"?"ok":state==="now"?"now":""}">${state==="done"?"Done":state==="now"?"Do this now":"Later"}</span></div>
+      ${open === st.id ? st.body : ""}</div></div>`; }).join("");
+  if (cur === steps.length) html += `<div class="card" style="text-align:center"><h2>🎉 Ready to guide</h2><p class="mute">It got you there with the walks you've got. Keep any leftover walks for another route or more corrections.</p><button class="b p big" data-act="toNav">Switch to 🧭 Navigate</button></div>`;
+  if ($("#steplist").dataset.h !== html) {
+    $("#steplist").innerHTML = html; $("#steplist").dataset.h = html;
+    $$("#steplist [data-open]").forEach(e => e.onclick = () => { openStep = (open === e.dataset.open) ? "__none" : e.dataset.open; render(); });
+    $$("#steplist [data-go]").forEach(e => e.onclick = () => show(e.dataset.go));
+    $$("#steplist [data-review]").forEach(e => e.onclick = () => { show("review"); openWalk(e.dataset.review); });
+    $$("#steplist [data-rec]").forEach(e => e.onclick = () => api("/api/start", {kind:"stairs", cls:e.dataset.rec}));
+    $$("#steplist [data-who]").forEach(e => e.onclick = () => { const n = e.dataset.who; api("/api/person", {name:n, step_length_m:S.people[n].step_length_m}); });
+    $$("#steplist [data-act]").forEach(e => e.onclick = () => stepAction(e.dataset.act));
+  }
+  const r = L.row || {};
+  $$("[data-live=h]").forEach(e => e.textContent = fmt(r.h) + "°");
+  $$("[data-live=steps]").forEach(e => e.textContent = r.steps ?? 0);
+  $$("[data-live=cal]").forEach(e => e.textContent = L.calibrated ? "yes" : "no");
+  $$("[data-live=rec]").forEach(e => e.textContent = fmt(L.rec_s));
+}
+async function stepAction(a){
+  if (a === "zero") { await api("/api/start", {kind:"zero"}); toast("Zeroed: now turn a full circle to the left"); }
+  if (a === "sensorOK") { mem.set("sensorOK", "1"); openStep = null; }
+  if (a === "skipStairs") { mem.set("skipStairs", mem.get("skipStairs") === "1" ? null : "1"); openStep = null; }
+  if (a === "stairsStop") { const j = await api("/api/stop", {save:true}); if (j.saved) toast("Saved"); }
+  if (a === "trainStairs") api("/api/train", {what:"stairs"});
+  if (a === "train") api("/api/train", {what:"policy"});
+  if (a === "toNav") setMode("nav");
+  render();
+}
+// "Step 5 of 8" bar on the other tabs, so you always know where you are
+function renderStepbar(){
+  const bar = $("#stepbar"), L = S.live || {};
+  if (mode !== "train" || tab === "steps" || L.mode === "nav" || L.mode === "demo") return bar.classList.add("hide");
+  const steps = stepsList(L), cur = currentStep(steps);
+  bar.classList.remove("hide");
+  $("#stepbar-t").innerHTML = cur < steps.length ? `<b>Step ${cur+1} of ${steps.length}:</b> ${steps[cur].title}` : "<b>All steps done</b> ✓";
+}
+$("#stepbar-back").onclick = () => { openStep = null; show("steps"); };
+
+{ const [h, wid] = location.hash.slice(1).split("/");
+  const saved = mem.get("mode");
+  mode = saved === "nav" ? "nav" : "train";
+  $$("#modeseg button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
+  $("#tabs").classList.toggle("hide", mode === "nav");
+  show(mode === "nav" ? "guide" : (["steps","walk","guide","review","train","setup"].includes(h) ? h : "steps"));
+  poll().then(() => { if (h === "review" && wid) openWalk(decodeURIComponent(wid)); }); }
+</script>
+</body>
+</html>

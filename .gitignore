@@ -7,3 +7,5 @@ my_env_gait_py312/
 gait-identifier/models/deployed.json
 my_env_steps_py312/
 step-counter/models/deployed.json
+campus-nav/models/deployed.json
+campus-nav/unoq_app/python/data/
