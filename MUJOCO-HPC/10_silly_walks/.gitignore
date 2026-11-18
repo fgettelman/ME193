@@ -1,0 +1,7 @@
+# made when you run the scripts
+*.mp4
+silly_robot.xml
+__pycache__/
+logs/
+sim_robot.json
+real_run-*.csv
