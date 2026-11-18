@@ -63,10 +63,15 @@ td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
 .walk.sel{border-color:var(--acc2);box-shadow:0 0 0 2px var(--acc2) inset}
 .tag{font-size:12px;padding:2px 7px;border-radius:99px;background:var(--bg);border:1px solid var(--line);white-space:nowrap}
 .tag.ok{border-color:var(--acc2);color:var(--acc2)}
-canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-action:manipulation}
-.ev{display:grid;grid-template-columns:1.5fr auto auto auto auto;gap:6px;align-items:center;margin-bottom:6px}
-.ev select{padding:6px}
-.ev button{padding:6px 9px;font-size:14px}
+canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.ev{border:1px solid var(--line);border-left:5px solid var(--straight);border-radius:10px;padding:8px;margin-bottom:8px}
+.ev .top1{display:flex;gap:6px;align-items:center}
+.ev .top1 select{flex:1;padding:8px;font-weight:600}
+.ev .times{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:14px}
+.ev .times span{min-width:62px}
+.ev .times .gap{flex:1}
+.ev button{padding:6px 10px;font-size:14px}
 .steps-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .step{display:grid;grid-template-columns:34px 1fr;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
 .step .num{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--bg);border:2px solid var(--line);color:var(--mute)}
@@ -111,6 +116,13 @@ canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-ac
 </nav>
 </div>
 <main>
+<div class="card hide" id="netwarn" style="border-left:4px solid var(--warn)">
+  <b style="color:var(--warn)">Reconnecting to the board…</b>
+  <p class="mute" style="margin:4px 0 0">Wi-Fi dropped for a moment. Keep walking: the board keeps
+    recording and counting on its own; this page catches up when it's back.</p></div>
+<div class="card hide" id="sensorwarn" style="border-color:var(--bad);border-left:4px solid var(--bad)">
+  <b style="color:var(--bad)">⚠ No movement data from the sensor</b>
+  <p class="mute" id="sensorwarn-t" style="margin:4px 0 0"></p></div>
 <div class="card stepbar hide" id="stepbar"><span id="stepbar-t"></span>
   <button class="b" id="stepbar-back">☰ Steps</button></div>
 
@@ -219,14 +231,17 @@ canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-ac
     <div class="legend" id="legend"></div>
     <canvas id="tl" height="130" style="margin-top:8px"></canvas>
     <p class="mute" id="rv-cursor">Cursor: —</p>
-    <div class="grid3 pad">
+    <div class="grid4 pad">
       <button class="b" data-add="left">+ Left</button>
       <button class="b" data-add="right">+ Right</button>
+      <button class="b" data-add="stairs_up">+ Up ↑</button>
+      <button class="b" data-add="stairs_down">+ Down ↓</button>
+      <button class="b" data-add="straight">+ Flat</button>
       <button class="b" data-add="arrived">+ Arrived</button>
-      <button class="b" data-add="stairs_up">+ Stairs ↑</button>
-      <button class="b" data-add="stairs_down">+ Stairs ↓</button>
-      <button class="b" id="rv-reset">Reset</button>
+      <button class="b" id="rv-reset" style="grid-column:span 2">Reset to detected</button>
     </div>
+    <p class="mute">Stairs where you walked on the flat? Change that event to <b>Flat walking</b> (or ✕ it).
+      Your fixes also teach the stairs classifier next time you train stairs.</p>
     <h2 style="margin-top:12px">Events</h2>
     <div id="evlist"></div>
     <p class="mute" id="rv-taps"></p>
@@ -248,9 +263,10 @@ canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-ac
   </div>
   <div class="card">
     <h2>Stairs classifier</h2>
-    <p class="mute">Built on the step counter: one prediction per stride from the thigh's angle range,
-      swing speed, stride time and bounce. Record ~30 s of each. Stand still 2 s before you start.
-      These recordings don't count as walks.</p>
+    <p class="mute">Built on the step counter: one prediction per stride from how far the thigh swings,
+      how much it jolts for its speed, and how long it swings back. None of these depend on how fast
+      you walk. Record 20-30 s per recording, 2-3 of each kind at different paces. Stand still 2 s
+      before you start. These recordings don't count as walks.</p>
     <div id="st-list"></div>
     <div class="grid3 pad" id="st-rec">
       <button class="b" data-s="flat">● Flat</button>
@@ -301,7 +317,9 @@ const COLOR = a => getComputedStyle(document.documentElement).getPropertyValue("
 let S = null, tab = "steps", mode = "train", prevLive = "idle", openStep = null, lastCur = null, lastInstr = null, sel = null, R = null, cursor = null;
 
 async function api(path, body){
-  const r = await fetch(path, body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  let r;
+  try { r = await fetch(path, body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)}); }
+  catch(e){ toast("Not sent: the board is out of reach for a moment. Tap again in a few seconds."); return {ok:false}; }
   const j = await r.json().catch(()=>({ok:false,error:"bad reply"}));
   if (j && j.ok === false && j.error) toast(j.error);
   return j;
@@ -328,12 +346,31 @@ function setMode(m){ mode = m; mem.set("mode", m);
   if (m === "nav") show("guide"); else if (tab === "guide" && !(S && S.live && S.live.mode === "nav")) show("steps"); else render(); }
 
 // ---- polling
+// Polling. A request lost in a Wi-Fi drop is abandoned after 3 s (it used to
+// hang for minutes and freeze the page). While walking, only the small live
+// state is fetched; the full state (walks, models) every 5 s.
+let fails = 0, lastFull = 0, lastOk = Date.now(), pollTimer = null, inFlight = false;
 async function poll(){
-  try { S = await (await fetch("/api/state")).json(); $("#dot").style.background = "#4ade80"; render(); }
-  catch(e){ $("#dot").style.background = "#f87171"; }
+  if (inFlight) return;               // only ever one request at a time
+  inFlight = true; clearTimeout(pollTimer);
+  try { await pollOnce(); } finally { inFlight = false; }
   const live = S && S.live && S.live.mode !== "idle";
-  setTimeout(poll, live || tab === "setup" || tab === "steps" ? 400 : 1500);
+  pollTimer = setTimeout(poll, fails ? 700 : (live ? 300 : (tab === "setup" || tab === "steps" ? 500 : 1500)));
 }
+async function pollOnce(){
+  const live = S && S.live && S.live.mode !== "idle";
+  const full = !S || !live || Date.now() - lastFull > 5000;
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 3000);
+  try {
+    const j = await (await fetch(full ? "/api/state" : "/api/live", {signal: ctl.signal, cache: "no-store"})).json();
+    if (full) { S = j; lastFull = Date.now(); } else { S.live = j.live; S.training = j.training; }
+    fails = 0; lastOk = Date.now(); $("#dot").style.background = "#4ade80"; render();
+  } catch(e){ fails++; $("#dot").style.background = "#f87171"; }
+  clearTimeout(to);
+  $("#netwarn").classList.toggle("hide", fails < 2);
+}
+// If the phone sleeps or the tab was in the background, poll right away on return.
+document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - lastOk > 2000) poll(); });
 
 function render(){
   if (!S) return;
@@ -348,6 +385,9 @@ function render(){
     if (L.mode === "nav" && tab !== "guide") return show("guide");
     if (L.mode === "idle" && was === "nav" && mode === "train" && tab === "guide") { /* stays: stop handler moves to Review */ } }
   renderStepbar();
+  const bad = S.live_available && L.sensor_ok === false;
+  $("#sensorwarn").classList.toggle("hide", !bad);
+  if (bad) $("#sensorwarn-t").textContent = (L.message || "") + " It wakes the sensor up by itself once the wires are good; this goes away within ~5 s.";
   $("#starts").innerHTML = S.routes.map(r => `<option value="${esc(r.start)}">`).join("");
   $("#peoplelist").innerHTML = Object.keys(S.people).map(p => `<option value="${esc(p)}">`).join("");
   if (tab === "steps") renderSteps(L);
@@ -448,7 +488,7 @@ async function openWalk(id){
   $("#rv-use").checked = j.use !== false;
   const taps = (R.meta.taps||[]);
   $("#rv-taps").textContent = taps.length ? "Taps on the walk: " + taps.map(t => `${t.kind==="correct"?"fix→"+NAMES[t.label]:t.label} @${fmt(t.t-t0)}s${t.shown?` (said ${NAMES[t.shown]})`:""}`).join(", ") : "";
-  $("#legend").innerHTML = Object.keys(NAMES).map(a => `<span><i class="swatch" style="background:${COLOR(a)}"></i>${NAMES[a]}</span>`).join("") + '<span>★ mark ✎ correction</span>';
+  $("#legend").innerHTML = Object.keys(NAMES).map(a => `<span><i class="swatch" style="background:${COLOR(a)}"></i>${NAMES[a]}</span>`).join("") + '<span>★ mark ✎ correction · thin bar under the timeline = stairs the classifier detected</span>';
   renderWalkList(); drawReview(); $("#rv").scrollIntoView({behavior:"smooth"});
 }
 function labelTrack(rows, events, look){
@@ -463,7 +503,10 @@ function labelTrack(rows, events, look){
     return "straight";
   });
 }
-function fitCanvas(c){ const r = devicePixelRatio||1, w = c.clientWidth, h = +c.getAttribute("height"); c.width = w*r; c.height = h*r; c.style.height = h+"px"; const g = c.getContext("2d"); g.setTransform(r,0,0,r,0,0); return [g,w,h]; }
+// The CSS height is kept in data-h: setting c.height (drawing resolution) also
+// changes the height attribute, which used to make the map grow on every tap.
+function fitCanvas(c){ if (!c.dataset.h) c.dataset.h = c.getAttribute("height");
+  const r = devicePixelRatio||1, w = c.clientWidth, h = +c.dataset.h; c.width = w*r; c.height = h*r; c.style.height = h+"px"; const g = c.getContext("2d"); g.setTransform(r,0,0,r,0,0); return [g,w,h]; }
 let mapT = null, tlT = null;
 function drawReview(){
   if (!R || !R.rows.length) return;
@@ -497,27 +540,39 @@ function drawReview(){
   (R.meta.taps||[]).forEach(t => { q.fillStyle="#f59e0b"; q.fillText(t.kind==="correct"?"✎":"★", X(t.t)-5, H-30); });
   if (cursor!=null){ q.strokeStyle="#000"; q.setLineDash([4,3]); q.beginPath(); q.moveTo(X(cursor),0); q.lineTo(X(cursor),H); q.stroke(); q.setLineDash([]); }
   q.fillStyle = getComputedStyle(document.body).color; q.font = "11px system-ui"; q.fillText("heading", 10, H-30);
+  q.fillStyle = getComputedStyle(document.body).color; q.globalAlpha = .6; q.fillText("instruction", W-70, H-30); q.globalAlpha = 1;
   const r = cursor!=null ? rows[at(cursor)] : null;
   $("#rv-cursor").textContent = r ? `Cursor: ${fmt(cursor-R.t0,1)} s · ${fmt(r.d,1)} m · heading ${fmt(r.h)}° · ${r.on}` : "Cursor: tap the map or the timeline";
   // event list
-  $("#evlist").innerHTML = R.events.map((e,i)=>`<div class="ev" data-i="${i}">
-    <select data-k="type">${Object.keys(NAMES).filter(a=>a!=="straight").map(a=>`<option value="${a}" ${a===e.type?"selected":""}>${i+1}. ${NAMES[a]}</option>`).join("")}</select>
-    <button class="b" data-k="m">−1s</button><span class="mute">${fmt(e.t-R.t0,1)}s${e.t_end!=null?`→${fmt(e.t_end-R.t0,1)}`:""}${e.auto?" auto":e.from?" "+e.from:""}</span>
-    <button class="b" data-k="p">+1s</button><button class="b danger" data-k="x">✕</button></div>`).join("") || '<p class="mute">No events: every moment is labelled "straight".</p>';
-  $$("#evlist .ev").forEach(div => { const i = +div.dataset.i;
-    div.querySelector("[data-k=type]").onchange = ev => { R.events[i].type = ev.target.value; if (ev.target.value.startsWith("stairs") && R.events[i].t_end==null) R.events[i].t_end = R.events[i].t+6; drawReview(); };
-    div.querySelector("[data-k=m]").onclick = () => { shift(i,-1); };
-    div.querySelector("[data-k=p]").onclick = () => { shift(i, 1); };
+  $("#evlist").innerHTML = R.events.map((e,i)=>{ const span = isSpan(e.type) && e.t_end!=null;
+    return `<div class="ev" data-i="${i}" style="border-left-color:${COLOR(e.type)}">
+    <div class="top1"><b>${i+1}.</b><select data-k="type">${EV_TYPES.map(([a,n])=>`<option value="${a}" ${a===e.type?"selected":""}>${n}</option>`).join("")}</select>
+      <button class="b danger" data-k="x" aria-label="delete">✕</button></div>
+    <div class="times"><span class="mute">${span?"from":"at"} ${fmt(e.t-R.t0,1)}s</span><button class="b" data-k="m">−1s</button><button class="b" data-k="p">+1s</button>
+      ${span ? `<span class="gap"></span><span class="mute">to ${fmt(e.t_end-R.t0,1)}s</span><button class="b" data-k="em">−1s</button><button class="b" data-k="ep">+1s</button>` : ""}
+      ${e.auto?'<span class="mute">· detected</span>':e.from?`<span class="mute">· ${esc(e.from)}</span>`:""}</div></div>`; }).join("")
+    || '<p class="mute">No events: every moment is labelled "straight".</p>';
+  $$("#evlist .ev").forEach(div => { const i = +div.dataset.i, e = R.events[i];
+    div.querySelector("[data-k=type]").onchange = ev => { e.type = ev.target.value;
+      if (isSpan(e.type)) { if (e.t_end==null) e.t_end = e.t+6; } else delete e.t_end;
+      delete e.auto; e.from = "review"; drawReview(); };
+    div.querySelector("[data-k=m]").onclick = () => shift(i,-1);
+    div.querySelector("[data-k=p]").onclick = () => shift(i, 1);
+    const em = div.querySelector("[data-k=em]"), ep = div.querySelector("[data-k=ep]");
+    if (em) em.onclick = () => { e.t_end = Math.max(e.t+0.5, e.t_end-1); drawReview(); };
+    if (ep) ep.onclick = () => { e.t_end += 1; drawReview(); };
     div.querySelector("[data-k=x]").onclick = () => { R.events.splice(i,1); drawReview(); };
   });
 }
+const EV_TYPES = [["left","Turn left"],["right","Turn right"],["stairs_up","Stairs up"],["stairs_down","Stairs down"],["straight","Flat walking (not stairs / no turn)"],["arrived","Arrived"]];
+const isSpan = t => t === "stairs_up" || t === "stairs_down" || t === "straight";
 function shift(i, s){ const e = R.events[i]; e.t += s; if (e.t_end!=null) e.t_end += s; R.events.sort((a,b)=>a.t-b.t); drawReview(); }
 $("#map").onclick = ev => { if (!R || !mapT) return; const b = ev.target.getBoundingClientRect(), x = ev.clientX-b.left, y = ev.clientY-b.top;
   let best = 0, bd = 1e9; R.rows.forEach((r,i)=>{ const [px,py] = mapT([-r.y,-r.x]); const d=(px-x)**2+(py-y)**2; if (d<bd){bd=d;best=i;} }); cursor = R.rows[best].t; drawReview(); };
 $("#tl").onclick = ev => { if (!R || !tlT) return; const b = ev.target.getBoundingClientRect(); cursor = tlT.T(ev.clientX-b.left); drawReview(); };
 $$("[data-add]").forEach(b => b.onclick = () => { if (!R) return; if (cursor==null) return toast("Tap the map or timeline first");
   const typ = b.dataset.add; if (typ==="arrived") R.events = R.events.filter(e=>e.type!=="arrived");
-  const e = {t: cursor, type: typ, from: "review"}; if (typ.startsWith("stairs")) e.t_end = cursor + 6;
+  const e = {t: cursor, type: typ, from: "review"}; if (isSpan(typ)) e.t_end = cursor + 6;
   R.events.push(e); R.events.sort((a,b)=>a.t-b.t); drawReview(); });
 $("#rv-reset").onclick = async () => { if (!R) return;
   const j = await (await fetch("/api/walk?suggest=1&id="+encodeURIComponent(sel))).json();
@@ -547,16 +602,15 @@ function renderTrain(L){
   $("#tr-out").innerHTML = out;
   // stairs
   const recs = S.stairs.recordings || [];
-  const by = {flat:[],up:[],down:[]}; recs.forEach(r => (by[r.cls]||[]).push(r));
-  $("#st-list").innerHTML = Object.entries(by).map(([c,rs])=>`<div class="row" style="margin-bottom:4px"><b style="flex:0 0 52px">${c}</b><span class="mute" style="flex:3">${rs.length} recordings, ${fmt(rs.reduce((a,r)=>a+r.seconds,0))} s</span>${rs.length?`<button class="b danger" style="flex:0;padding:6px 10px" data-sd="${esc(rs[rs.length-1].id)}">✕ last</button>`:""}</div>`).join("");
-  $$("[data-sd]").forEach(b => b.onclick = () => confirm("Delete that recording?") && api("/api/delete", {stairs_id: b.dataset.sd}));
+  const lh = recordingList(recs);
+  if ($("#st-list").dataset.h !== lh) { $("#st-list").innerHTML = lh; $("#st-list").dataset.h = lh; bindDeleteRec($("#st-list")); }
   const rec = L.mode === "stairs";
   $("#st-rec").classList.toggle("hide", rec || !S.live_available); $("#st-stop").classList.toggle("hide", !rec);
   if (rec) $("#st-stop").textContent = `■ Stop recording ${L.stairs_cls} (${fmt(L.rec_s)} s)`;
   let so = "";
-  if (lt.what === "stairs") so = lt.ok ? `<p class="msg">Strides: ${Object.entries(lt.strides).map(([k,v])=>`${k} ${v}`).join(", ")} · leave-one-out accuracy <b>${Math.round(100*lt.loo_accuracy)}%</b></p>` : `<p class="msg" style="color:var(--bad)">${esc(lt.error)}</p>`;
+  if (lt.what === "stairs") so = stairsResult(lt);
   else if (S.stairs.ready) so = `<p class="mute">Stairs model ready (${Object.entries(S.stairs.counts||{}).map(([k,v])=>`${v} ${k}`).join(", ")} strides).</p>`;
-  $("#st-out").innerHTML = so;
+  if ($("#st-out").dataset.h !== so) { $("#st-out").innerHTML = so; $("#st-out").dataset.h = so; bindDeleteRec($("#st-out")); }
 }
 $("#tr-go").onclick = () => api("/api/train", {what:"policy"});
 $("#st-train").onclick = () => api("/api/train", {what:"stairs"});
@@ -577,6 +631,50 @@ $("#p-name").onchange = () => { const p = S && S.people[$("#p-name").value.trim(
 $("#p-save").onclick = async () => { const name = $("#p-name").value.trim(); if (!name) return toast("Enter a name");
   const j = await api("/api/person", {name, step_length_m: +$("#p-step").value}); if (j.ok) toast(`Wearer: ${name}`); };
 $("#s-zero").onclick = () => api("/api/start", {kind:"zero"});
+
+// Stairs training result: the honest accuracy (whole recordings held out),
+// per kind, and recordings too short to have a single full stride.
+function stairsResult(lt){
+  if (!lt.ok) return `<div class="tip" style="color:var(--bad)">${esc(lt.error)}</div>` + tooShort(lt.too_short);
+  const acc = lt.accuracy != null ? Math.round(100*lt.accuracy) : null;
+  const weak = Object.entries(lt.recall||{}).filter(([,r]) => r < 0.8).map(([c]) => c);
+  return `<div class="tip">Accuracy on recordings it didn't train on: <b>${acc!=null ? acc+"%" : "—"}</b>
+      ${lt.recall ? "<br>" + Object.entries(lt.recall).map(([c,r]) => `${c} ${Math.round(100*r)}%`).join(" · ") : ""}
+      <br><span class="mute">${Object.entries(lt.strides).map(([k,v])=>`${v} ${k}`).join(", ")} strides from ${lt.groups} recordings/walks${lt.from_walks ? ` (${lt.from_walks} from reviewed walks)` : ""}.
+      Each recording is tested by a model trained on all the others, so this is what to expect on a new walk.</span>
+      ${weak.length ? `<br><b>Weakest: ${weak.join(", ")}.</b> Add a 20-30 s recording of that at a different pace than before, then train again.` : ""}</div>` + tooShort(lt.too_short);
+}
+function tooShort(list){
+  if (!list || !list.length) return "";
+  return `<div class="tip" style="border-left-color:var(--warn)"><b>${list.length} recording${list.length>1?"s are":" is"} too short to use</b> (no full stride; record 20 s or more):
+    <div class="btnrow">${list.map(r => `<button class="b danger" data-sd="${esc(r.id)}">✕ ${esc(r.cls)} ${fmt(r.seconds)} s</button>`).join("")}</div></div>`;
+}
+// Every stairs recording with its own delete button. Under 15 s there's
+// usually not a single full stride in it, so it's marked "too short".
+const SHORT_S = 15;
+const KIND = {flat:"Flat walking", up:"Stairs up", down:"Stairs down"};
+function recordingList(recs){
+  if (!recs.length) return '<p class="mute">No recordings yet.</p>';
+  const short = recs.filter(r => (r.seconds||0) < SHORT_S);
+  return ["flat","up","down"].map(c => { const rs = recs.filter(r => r.cls === c);
+    return `<div style="margin-bottom:10px"><div class="row" style="margin-bottom:4px"><b>${KIND[c]}</b>
+        <span class="mute" style="text-align:right">${rs.length} recording${rs.length===1?"":"s"}, ${fmt(rs.reduce((a,r)=>a+(r.seconds||0),0))} s</span></div>
+      ${rs.map(r => { const sh = (r.seconds||0) < SHORT_S;
+        return `<div class="walk" style="padding:6px 10px;margin-bottom:4px">
+          <span>${esc(r.id.slice(9,11)+":"+r.id.slice(11,13))} · <b>${fmt(r.seconds)} s</b> ${esc(r.person||"")}
+            ${sh ? '<span class="tag" style="border-color:var(--warn);color:var(--warn)">too short</span>' : ""}</span>
+          <button class="b danger" style="padding:6px 12px" data-sd="${esc(r.id)}" aria-label="delete">✕</button></div>`; }).join("") || '<p class="mute" style="margin:2px 0">none yet</p>'}</div>`; }).join("")
+    + (short.length ? `<button class="b danger big" data-sdall="${esc(short.map(r=>r.id).join(","))}">✕ Delete the ${short.length} too-short recording${short.length>1?"s":""}</button>` : "");
+}
+function bindDeleteRec(root){
+  root.querySelectorAll("[data-sd]").forEach(b => b.onclick = async () => {
+    if (!confirm("Delete that recording?")) return;
+    await api("/api/delete", {stairs_id: b.dataset.sd}); b.closest(".walk") ? b.closest(".walk").remove() : b.remove(); toast("Deleted. Train stairs again to use the change."); });
+  root.querySelectorAll("[data-sdall]").forEach(b => b.onclick = async () => {
+    const ids = b.dataset.sdall.split(","); if (!confirm(`Delete ${ids.length} too-short recording(s)?`)) return;
+    for (const id of ids) await api("/api/delete", {stairs_id: id});
+    b.remove(); toast("Deleted. Train stairs again to use the change."); });
+}
 
 // ---- STEPS: the training checklist
 function stepsList(L){
@@ -605,16 +703,18 @@ function stepsList(L){
        <div class="btnrow"><button class="b" data-act="zero">Zero</button><button class="b p" data-act="sensorOK">✓ Looks right</button></div>
        <div class="tip">Way off? Tighten the strap and try again. If steps don't count, check the cable (Setup tab shows samples/s, about 100).</div>`},
     {id:"stairs", title:"Record stairs (~30 s each)", done: skipStairs || ["flat","up","down"].every(c => secs(c) >= 20),
-     body: `<ol><li>Find a staircase with 10+ steps.</li><li>For each kind: <b>stand still 2 s</b>, tap record, walk it at your normal pace, tap Stop. Go up and down a few times to get 30 s.</li></ol>
+     body: `<ol><li>Find a staircase with 10+ steps.</li><li>For each kind: <b>stand still 2 s</b>, tap record, walk it, tap Stop. <b>At least 20 s per recording</b>: shorter ones often have no full stride and are wasted. Go up and down a few times.</li>
+       <li>Make 2-3 recordings of each kind at <b>different paces</b> (relaxed, normal, brisk), so it learns stairs vs flat, not slow vs fast.</li></ol>
        <table>${["flat","up","down"].map(c => `<tr><td>${{flat:"Flat walking",up:"Stairs up",down:"Stairs down"}[c]}</td><td>${fmt(secs(c))} s</td><td>${secs(c)>=20?"✓":""}</td></tr>`).join("")}</table>
        ${rec ? `<button class="b danger big" data-act="stairsStop">■ Stop recording ${esc(L.stairs_cls)} (<span data-live="rec">0</span> s)</button>`
              : `<div class="btnrow">${["flat","up","down"].map(c => `<button class="b" data-rec="${c}">● ${c}</button>`).join("")}</div>`}
+       <details style="margin-top:10px"><summary><b>Your recordings</b> (tap to see / delete)</summary><div style="margin-top:8px">${recordingList(recs)}</div></details>
        <div class="btnrow"><button class="b" data-act="skipStairs">${skipStairs ? "Undo skip" : "No stairs on our route: skip"}</button></div>
        <div class="tip">These recordings don't count toward your 10 walks.</div>`},
     {id:"stairsTrain", title:"Train the stairs classifier", done: skipStairs || S.stairs.ready,
      body: `<p>Teaches it what a stride on stairs looks like from the thigh (one prediction per stride).</p>
        <button class="b p big" data-act="trainStairs" ${S.training?"disabled":""}>${S.training==="stairs"?"Training…":"Train stairs"}</button>
-       ${lt.what==="stairs" ? (lt.ok ? `<div class="tip">Accuracy (leave-one-out): <b>${Math.round(100*lt.loo_accuracy)}%</b>. Below about 80%? Record a bit more of the weakest kind and train again.</div>` : `<div class="tip" style="color:var(--bad)">${esc(lt.error)}</div>`) : ""}`},
+       ${lt.what==="stairs" ? stairsResult(lt) : ""}`},
     {id:"demo", title:"Walk the route (demonstrations)", done: demos.length >= 2,
      body: `<div class="tip"><b>Plan your 10 walks</b>, for example 3 demos each (6), which leaves 4 for correction walks in step 8.</div>
        <ol><li>Pick a starting spot you can find exactly again, and decide which way you'll face (e.g. "back to the library doors").</li>
@@ -626,7 +726,7 @@ function stepsList(L){
     {id:"review", title:"Review every walk", done: walks.length > 0 && unreviewed.length === 0,
      body: `<ol><li>Open the walk. The map shows the path; each numbered dot is an event.</li>
        <li>Every <b>turn</b> should match a real turn: ✕ delete fake ones; to add a missed one, tap the map where it happened, then <b>+ Left</b>/<b>+ Right</b>.</li>
-       <li><b>Stairs</b> should cover the stairs; move events with −1s/+1s.</li>
+       <li><b>Stairs</b> should cover the stairs exactly: adjust "from" and "to". Stairs where you were on the flat? Change it to <b>Flat walking</b>.</li>
        <li><b>Arrived</b> should be at the door. Then <b>Save review</b>.</li></ol>
        ${unreviewed.length ? `<p><b>${unreviewed.length} to review:</b></p><div class="btnrow">${unreviewed.map(w => `<button class="b" data-review="${esc(w.id)}">${esc(w.person)} · ${w.kind} · ${fmt(w.length_m)} m</button>`).join("")}</div>` : `<p class="mute">${walks.length ? "All reviewed ✓" : "No walks yet."}</p>`}
        <div class="tip">A walk that went wrong (got lost, sensor slipped)? Untick "use for training" so it doesn't use one of your 10.</div>`},
@@ -665,6 +765,7 @@ function renderSteps(L){
     $$("#steplist [data-rec]").forEach(e => e.onclick = () => api("/api/start", {kind:"stairs", cls:e.dataset.rec}));
     $$("#steplist [data-who]").forEach(e => e.onclick = () => { const n = e.dataset.who; api("/api/person", {name:n, step_length_m:S.people[n].step_length_m}); });
     $$("#steplist [data-act]").forEach(e => e.onclick = () => stepAction(e.dataset.act));
+    bindDeleteRec($("#steplist"));
   }
   const r = L.row || {};
   $$("[data-live=h]").forEach(e => e.textContent = fmt(r.h) + "°");

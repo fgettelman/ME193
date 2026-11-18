@@ -61,7 +61,8 @@ class App:
                            "trained_on": len(pol.d.get("trained_on", [])) if pol.d else 0,
                            "lowo": pol.d.get("lowo") if pol.d else None},
                 "stairs": {"ready": stairs.ready,
-                           "counts": stairs.d.get("counts") if stairs.ready else None,
+                           "counts": dict(zip(stairs.d["classes"], stairs.d["counts"]))
+                           if stairs.ready else None,
                            "recordings": self.store.stairs_recordings()},
                 "training": self.training,
                 "last_train": self.last_train,
@@ -131,6 +132,10 @@ def make_handler(app):
                         return self._send(200, f.read(), "text/html; charset=utf-8")
                 if u.path == "/api/state":
                     return self._send(200, app.state())
+                if u.path == "/api/live":
+                    # Small and fast: just the live readings, polled while walking.
+                    return self._send(200, {"live": app.live.state() if app.live else None,
+                                            "training": app.training})
                 if u.path == "/api/walk":
                     return self._send(200, app.store.walk_for_review(q["id"], q.get("suggest") == "1"))
                 if u.path == "/api/bundle":

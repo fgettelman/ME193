@@ -30,7 +30,9 @@ DRIFT_ABSORB_DEG = 20.0          # small, slow heading changes are bends/drift, 
 # --- Stairs -----------------------------------------------------------------
 STAIR_CLASSES = ["flat", "up", "down"]
 STAIR_STEP_M = 0.30              # a step on stairs moves you this far horizontally
-FLIGHT_STRIDES = 2               # strides in a row to start / end a flight
+FLIGHT_STRIDES = 3               # strides in a row on stairs to start a flight
+FLIGHT_END_STRIDES = 2           # flat strides in a row to end it
+STAIR_MIN_P = 0.8                # a stride only counts as stairs if the classifier is this sure
 
 # --- Navigator (behavior cloning) ---------------------------------------------
 ACTIONS = ["straight", "left", "right", "stairs_up", "stairs_down", "arrived"]

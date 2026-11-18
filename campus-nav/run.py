@@ -13,8 +13,8 @@ Start the campus navigator.
    board doesn't have it yet.
 3. Prints the link to open on your phone and opens it on the laptop.
 
-The phone has to reach the board: put both on the same network (Tufts_Robot,
-or the phone's hotspot with the board joined to it; see README).
+The phone has to reach the board: both on Tufts_Robot. Run board_wifi.py once
+per board so the board's Wi-Fi doesn't keep dropping (see README).
 """
 
 import argparse
