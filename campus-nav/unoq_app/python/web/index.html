@@ -187,7 +187,8 @@ canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-ac
     <p class="mute hide" id="n-untrained">Nothing trained yet. Switch to <b>🎓 Training</b> and follow the steps.</p>
     <p class="mute">If an instruction is wrong, tap what it should be. Those corrections
       are saved with the walk (DAgger), so after Review and Train the navigator learns
-      from the places it actually got wrong. This walk counts toward the 10.</p>
+      from the places it actually got wrong. This walk counts toward the 10.
+      At the end it asks <b>Have you arrived?</b>: Yes stops and saves the walk.</p>
   </div>
   <div class="hide" id="nav-live">
     <div id="instr">
@@ -212,6 +213,16 @@ canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-ac
       <div class="grid2">
         <button class="b" id="n-stop">Stop &amp; save</button>
         <button class="b danger" id="n-cancel">Discard</button>
+      </div>
+    </div>
+    <div id="arr-ask" class="hide" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:8;align-items:center;justify-content:center;padding:16px">
+      <div class="card" style="max-width:380px;width:100%;text-align:center">
+        <h2 style="font-size:24px">Have you arrived?</h2>
+        <p class="mute" id="arr-dest"></p>
+        <div class="grid2">
+          <button class="b p big" id="arr-yes">Yes, stop</button>
+          <button class="b big" id="arr-no">No, keep going</button>
+        </div>
       </div>
     </div>
   </div>
@@ -466,7 +477,25 @@ function renderGuide(L){
 // that to 0-3% on our walks.
 const THEN_M = 8;
 let lastThen = null;
+// At the end: ask "Have you arrived?" instead of just showing Arrived.
+// Yes = the same as tapping the Arrived correction (the walk stops and is saved).
+// No = keep guiding; ask again after 5 more metres (or when Arrived comes back).
+let askAt = 0, asking = false;
+function arrivalCheck(a, ahead){
+  const d = (G ? G.d : 0) + (ahead || 0);
+  if (a !== "arrived") { askAt = 0; return; }
+  if (asking || d < askAt) return;
+  asking = true;
+  const r = S && S.live && S.live.route;
+  $("#arr-dest").textContent = r ? `at ${r.dest}` : "";
+  $("#arr-ask").classList.remove("hide"); $("#arr-ask").style.display = "flex";
+  say("Have you arrived?"); navigator.vibrate && navigator.vibrate([200,100,200]);
+}
+function closeAsk(){ asking = false; $("#arr-ask").classList.add("hide"); $("#arr-ask").style.display = ""; }
+$("#arr-yes").onclick = () => { closeAsk(); askAt = 0; navCorrect("arrived"); };
+$("#arr-no").onclick = () => { closeAsk(); askAt = (G ? G.d : 0) + 5; say("OK, keep going"); };
 function showInstr(a, sub, ahead){
+  arrivalCheck(a, ahead);
   $("#instr").style.background = COLOR(a); $("#arrow").innerHTML = ARROWS[a]; $("#n-txt").textContent = NAMES[a];
   $("#n-sub").textContent = sub;
   const next = G && G.plan.find(p => p.in_m > ahead + 0.5 && p.do !== a && p.do !== "straight");
@@ -509,13 +538,15 @@ $("#n-go").onclick = async () => {
   if (window.speechSynthesis && $("#n-voice").checked) say("Stand still");   // unlocks speech on iPhone
   await api("/api/start", {kind:"nav", start, dest, note: info.note || ""});
 };
-$$("#nav-live [data-c]").forEach(b => b.onclick = async () => {
-  const lab = b.dataset.c; navigator.vibrate && navigator.vibrate(30);
+$$("#nav-live [data-c]").forEach(b => b.onclick = () => navCorrect(b.dataset.c));
+async function navCorrect(lab){
+  navigator.vibrate && navigator.vibrate(30);
+  if (lab === "arrived") closeAsk();
   const j = await api("/api/tap", {kind:"correct", label:lab});
-  if (j.saved) { say("Arrived"); if (mode === "train") { toast("Saved as a correction walk: review it"); openWalk(j.saved); show("review"); } else toast("You've arrived! (saved; review it in Training mode)"); }
-});
-$("#n-stop").onclick = async () => { const j = await api("/api/stop", {save:true}); if (j.saved) { if (mode === "train") { openWalk(j.saved); show("review"); } else toast("Saved. Review it in Training mode."); } };
-$("#n-cancel").onclick = () => confirm("Discard this walk?") && api("/api/stop", {save:false});
+  if (j.saved) { say("You've arrived"); if (mode === "train") { toast("Saved as a correction walk: review it"); openWalk(j.saved); show("review"); } else toast("You've arrived! (saved; review it in Training mode)"); }
+}
+$("#n-stop").onclick = async () => { closeAsk(); const j = await api("/api/stop", {save:true}); if (j.saved) { if (mode === "train") { openWalk(j.saved); show("review"); } else toast("Saved. Review it in Training mode."); } };
+$("#n-cancel").onclick = () => { if (confirm("Discard this walk?")) { closeAsk(); api("/api/stop", {save:false}); } };
 
 // ---- REVIEW
 function renderWalkList(){
@@ -835,7 +866,7 @@ function stepsList(L){
     {id:"dagger", title:"Test it and correct it (DAgger)", done: daggers.length > 0 && unreviewed.length === 0 && upToDate,
      body: `<ol><li>On <b>Guide</b>: pick the route, stand at the start facing the same way, <b>Start guiding</b>, stand still until it says go.</li>
        <li>Follow it. <b>When it's wrong, tap what it should say</b> and keep walking the right way.</li>
-       <li>At the door tap <b>✓ Arrived</b> (or Stop &amp; save).</li>
+       <li>At the end it asks <b>Have you arrived?</b>: tap <b>Yes</b> (or ✓ Arrived / Stop &amp; save).</li>
        <li>Then <b>review</b> that walk (step 6) and <b>train again</b> (step 7). These steps reopen by themselves.</li></ol>
        <p class="mute">Correction walks so far: ${daggers.length} · ${left} of ${S.max_walks} walks left</p>
        <button class="b p big" data-go="guide" ${S.policy.ready?"":"disabled"}>Go to Guide</button>`},
