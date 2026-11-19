@@ -336,8 +336,10 @@ def label_track(track, events, lookahead=S.LOOKAHEAD_M):
 
     events: [{"t", "type", optional "t_end"}], type in ACTIONS (not "straight").
     A turn/stairs instruction shows from `lookahead` metres before the event
-    until it's done; "arrived" from the arrival on. Returns a list of labels
-    (None for rows after the walk really ended)."""
+    until it's done; "arrived" for the last ARRIVE_M metres before the
+    arrival (tapping Arrived ends the walk, so labelling only after it left
+    almost nothing to learn "arrived" from). Returns a list of labels (None
+    for rows after the walk really ended)."""
     ts = np.array([r["t"] for r in track])
     ds = np.array([r["d"] for r in track])
 
@@ -346,6 +348,7 @@ def label_track(track, events, lookahead=S.LOOKAHEAD_M):
 
     evs = sorted(events, key=lambda e: e["t"])
     arrive = next((e["t"] for e in evs if e["type"] == "arrived"), None)
+    d_arrive = d_at(arrive) if arrive is not None else None
     spans = []
     for e in evs:
         if e["type"] in ("arrived", "straight"):
@@ -355,8 +358,11 @@ def label_track(track, events, lookahead=S.LOOKAHEAD_M):
     out = []
     for r in track:
         t, d = r["t"], r["d"]
-        if arrive is not None and t >= arrive:
-            out.append("arrived" if t <= arrive + 4.0 else None)
+        if arrive is not None and t > arrive + 4.0:
+            out.append(None)
+            continue
+        if arrive is not None and (t >= arrive or d >= d_arrive - S.ARRIVE_M):
+            out.append("arrived")
             continue
         lab = "straight"
         for d0, t_ev, t_end, typ in spans:
@@ -458,15 +464,46 @@ class Policy:
 
     @staticmethod
     def build(walk_data, weights=None, k=5):
-        """walk_data: list of (route_key, X, y). Returns a Policy."""
+        """walk_data: list of (route_key, X, y) or (route_key, X, y, walk_id).
+        Returns a Policy. Each sample remembers which walk it came from (in
+        walking order), so plan() can look ahead along that walk."""
         routes = sorted({w[0] for w in walk_data})
-        X, y, ri = [], [], []
-        for key, Xw, yw in walk_data:
+        X, y, ri, wi = [], [], [], []
+        for n, w in enumerate(walk_data):
+            key, Xw, yw = w[0], w[1], w[2]
             X += Xw
             y += yw
             ri += [routes.index(key)] * len(yw)
+            wi += [n] * len(yw)
         return Policy({"type": "knn", "k": k, "weights": weights or DEFAULT_WEIGHTS,
-                       "routes": routes, "X": X, "y": y, "route": ri})
+                       "routes": routes, "X": X, "y": y, "route": ri, "walk": wi})
+
+    def plan(self, state, route_key, horizon_m=40.0):
+        """What's coming: [{"in_m", "do"}] for the next horizon_m metres, read
+        off the training walk that best matches where you are now (the
+        nearest sample, then that walk's labels ahead of it). The phone uses
+        it to keep giving directions while the Wi-Fi drops."""
+        if not self.ready or "walk" not in self.d or route_key not in self.d["routes"]:
+            return []
+        idx = np.flatnonzero(self.route == self.d["routes"].index(route_key))
+        if not len(idx):
+            return []
+        dist = np.sqrt((((self.X[idx] - np.asarray(state)) * self.wv) ** 2).sum(1))
+        i = int(idx[np.argmin(dist)])
+        walk = np.asarray(self.d["walk"])
+        d_feature = FEATURES.index("d")
+        d0 = self.X[i, d_feature]
+        out, last = [], None
+        for j in range(i, len(self.y)):
+            if walk[j] != walk[i]:
+                break
+            ahead = float(self.X[j, d_feature] - d0)
+            if ahead > horizon_m:
+                break
+            if self.y[j] != last:
+                out.append({"in_m": round(max(ahead, 0.0), 1), "do": str(self.y[j])})
+                last = self.y[j]
+        return out
 
     def probs(self, state, route_key):
         """state: state_vector(row). Returns {action: probability}."""
@@ -519,8 +556,10 @@ class Guide:
         self.shown = "straight"
         self.pending, self.pending_n = None, 0
         self.probs = {}
+        self.plan = []
 
     def update(self, row):
+        self.plan = self.policy.plan(state_vector(row), self.route)
         p = self.policy.probs(state_vector(row), self.route)
         if not p:
             return self.shown

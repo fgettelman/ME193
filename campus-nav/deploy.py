@@ -2,7 +2,8 @@
 Put the campus navigator on the UNO Q and (re)start it over SSH, without
 Arduino App Lab. (Same as step-counter/deploy.py, for this app.)
 
-    python deploy.py           # copy unoq_app/ (code), restart
+    python deploy.py           # copy unoq_app/ (code), restart (re-flashes only if the sketch changed)
+    python deploy.py --full    # also re-flash the microcontroller
     python deploy.py --logs    # follow the app's output (like App Lab's console)
     python deploy.py --start   # just start the app (e.g. after the board rebooted)
     python deploy.py --stop    # stop the app (the board stays on)
@@ -59,10 +60,10 @@ def ssh(host, command, stdin=None):
     return subprocess.run(["ssh", f"arduino@{host}", command], input=stdin).returncode
 
 
-def app_fingerprint():
-    """Hash of everything deploy uploads; changes when code or the model changes."""
+def app_fingerprint(sub=""):
+    """Hash of everything deploy uploads (or of one subfolder, e.g. "sketch")."""
     h = hashlib.sha256()
-    for root, dirs, files in sorted(os.walk(APP_DIR)):
+    for root, dirs, files in sorted(os.walk(os.path.join(APP_DIR, sub))):
         dirs[:] = sorted(d for d in dirs if d not in ("__pycache__", "data") and not d.startswith("."))
         for f in sorted(files):
             if not f.startswith("."):
@@ -88,20 +89,35 @@ def start(host):
                      f" arduino-app-cli app start {APP_ID} 2>&1 | grep -E 'error:|started|fail'") == 0
 
 
-def deploy(host, person=None):
-    """Upload unoq_app/ and restart the app. Returns True if it worked."""
+def deploy(host, person=None, full=False):
+    """Upload unoq_app/ and restart. Returns True if it worked.
+
+    Re-flashing the microcontroller sometimes leaves it not answering until
+    the board is power-cycled, so it's only done when the sketch changed (or
+    with full=True). Otherwise the files are copied and just the Python
+    container restarts (the app folder is mounted into it): ~5 s, and the
+    microcontroller keeps running."""
+    last = last_deployed()
+    sketch_same = (last.get("host") == host and last.get("sketch") == app_fingerprint("sketch"))
+    running = ssh(host, f"docker ps --format '{{{{.Names}}}}' | grep -qx {CONTAINER}") == 0
+    quick = sketch_same and running and not full
     print(f"Uploading unoq_app/ to {host} (walks and models already on the board are kept)")
-    print("Then restarting the app; the sketch recompiles, so this takes about a minute.")
-    remote = (f"mkdir -p {REMOTE_DIR} && tar -xzf - -C {REMOTE_DIR} 2>/dev/null"
-              f" && {STOP_OTHERS}"
-              f" arduino-app-cli app stop {APP_ID} >/dev/null 2>&1;"
-              f" arduino-app-cli app start {APP_ID} 2>&1 | grep -E 'error:|started|fail'"
-              f" && sleep 15 && docker logs --tail 5 {CONTAINER} 2>&1")
+    copy = f"mkdir -p {REMOTE_DIR} && tar -xzf - -C {REMOTE_DIR} 2>/dev/null"
+    if quick:
+        print("Sketch unchanged: restarting only the Python side (the microcontroller isn't re-flashed).")
+        remote = f"{copy} && docker restart {CONTAINER} >/dev/null && sleep 6 && docker logs --tail 3 {CONTAINER} 2>&1"
+    else:
+        print("Sketch changed: restarting the whole app; it recompiles and re-flashes (~1 minute).")
+        remote = (f"{copy} && {STOP_OTHERS}"
+                  f" arduino-app-cli app stop {APP_ID} >/dev/null 2>&1;"
+                  f" arduino-app-cli app start {APP_ID} 2>&1 | grep -E 'error:|started|fail'"
+                  f" && sleep 15 && docker logs --tail 5 {CONTAINER} 2>&1")
     if ssh(host, remote, stdin=app_tarball()):
         return False
     os.makedirs(os.path.dirname(DEPLOYED), exist_ok=True)
     with open(DEPLOYED, "w") as f:
-        json.dump({"host": host, "person": person, "fingerprint": app_fingerprint()}, f)
+        json.dump({"host": host, "person": person, "fingerprint": app_fingerprint(),
+                   "sketch": app_fingerprint("sketch")}, f)
     return True
 
 
@@ -111,6 +127,8 @@ def main():
     ap.add_argument("--logs", action="store_true", help="just follow the app's output")
     ap.add_argument("--start", action="store_true", help="just start the app")
     ap.add_argument("--stop", action="store_true", help="stop the app")
+    ap.add_argument("--full", action="store_true",
+                    help="re-flash the microcontroller even if the sketch didn't change")
     args = ap.parse_args()
 
     if args.logs:
@@ -130,7 +148,7 @@ def main():
         if not start(args.host):
             raise SystemExit("Couldn't start the app. Is the board on, and is the IP right?")
         return
-    if not deploy(args.host):
+    if not deploy(args.host, full=args.full):
         raise SystemExit("Deploy failed (see above). Is the board on, and is the IP right?")
     print(f"\nDone. On your phone (same network as the board): http://{args.host}:8050")
 
