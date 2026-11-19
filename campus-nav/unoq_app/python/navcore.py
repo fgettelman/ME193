@@ -331,6 +331,25 @@ def replay(raw, step_length_m, stairs_model=None, keep_strides=False, t0=None):
 
 # --- Labels: from the reviewed events to an instruction for every moment -------
 
+def turn_onset(ts, hs, t_event):
+    """When a turn really started. Turn events sit where the detector fired,
+    after the heading had settled: a median 2.4 m (2 s) after the turn began
+    in our walks, so a warning measured from there came too late. Onset =
+    the last moment before the event when the heading was still within 15%
+    of the turn from the heading on the straight before it."""
+    k = int(np.searchsorted(ts, t_event))
+    if k >= len(ts) or k < 3:
+        return t_event
+    k0 = int(np.searchsorted(ts, t_event - 8.0))
+    k1 = max(k0 + 3, int(np.searchsorted(ts, t_event - 5.0)))
+    h_start = float(np.median(hs[k0:k1]))
+    change = hs[k] - h_start
+    if abs(change) < 40:
+        return t_event
+    before = np.flatnonzero((hs[:k + 1] - h_start) / change < 0.15)
+    return float(ts[before[-1]]) if len(before) else t_event
+
+
 def label_track(track, events, lookahead=S.LOOKAHEAD_M):
     """For each track row, the instruction a guide should be giving then.
 
@@ -349,12 +368,16 @@ def label_track(track, events, lookahead=S.LOOKAHEAD_M):
     evs = sorted(events, key=lambda e: e["t"])
     arrive = next((e["t"] for e in evs if e["type"] == "arrived"), None)
     d_arrive = d_at(arrive) if arrive is not None else None
+    hs = np.array([r["h"] for r in track])
     spans = []
     for e in evs:
         if e["type"] in ("arrived", "straight"):
             continue
         end = e.get("t_end", e["t"])
-        spans.append((d_at(e["t"]) - lookahead, e["t"], end, e["type"]))
+        start = e["t"]
+        if e["type"] in ("left", "right"):       # warn before the turn starts, not before it ends
+            start = turn_onset(ts, hs, e["t"])
+        spans.append((d_at(start) - lookahead, start, end, e["type"]))
     out = []
     for r in track:
         t, d = r["t"], r["d"]

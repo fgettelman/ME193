@@ -460,12 +460,33 @@ function renderGuide(L){
 }
 // Show an instruction (and speak / buzz when it changes). `ahead` = metres
 // walked since the board's last update (used to say what's next).
+// Back-to-back events (left, then stairs down 3 m later) used to be announced
+// one at a time, so the second came too late: 30% of events were warned under
+// 2 m before. Saying the next one too ("Turn left, then stairs down") brought
+// that to 0-3% on our walks.
+const THEN_M = 8;
+let lastThen = null;
 function showInstr(a, sub, ahead){
   $("#instr").style.background = COLOR(a); $("#arrow").innerHTML = ARROWS[a]; $("#n-txt").textContent = NAMES[a];
   $("#n-sub").textContent = sub;
-  const next = G && G.plan.find(p => p.in_m > ahead + 0.5 && p.do !== a);
-  $("#n-next").textContent = next ? `Then: ${NAMES[next.do].toLowerCase()} in ~${Math.max(1, Math.round(next.in_m - ahead))} m` : "";
-  if (a !== lastInstr) { if (lastInstr !== null) { say(NAMES[a]); navigator.vibrate && navigator.vibrate(a==="straight"?60:[120,80,120]); } lastInstr = a; }
+  const next = G && G.plan.find(p => p.in_m > ahead + 0.5 && p.do !== a && p.do !== "straight");
+  const nextIn = next ? Math.max(1, Math.round(next.in_m - ahead)) : null;
+  const soon = next && nextIn <= THEN_M;
+  $("#n-next").textContent = next ? `Then: ${NAMES[next.do].toLowerCase()} in ~${nextIn} m` : "";
+  $("#n-next").style.fontSize = soon ? "22px" : "";
+  $("#n-next").style.opacity = soon ? "1" : ".75";
+  const thenKey = soon ? next.do : null;
+  if (a !== lastInstr) {
+    if (lastInstr !== null) {
+      say(NAMES[a] + (soon ? ", then " + NAMES[next.do].toLowerCase() : ""));
+      navigator.vibrate && navigator.vibrate(a==="straight"?60:[120,80,120]);
+    }
+    lastInstr = a; lastThen = thenKey;
+  } else if (thenKey && thenKey !== lastThen) {
+    say("Then " + NAMES[thenKey].toLowerCase());          // next event just came within 8 m
+    navigator.vibrate && navigator.vibrate(60);
+    lastThen = thenKey;
+  } else if (!thenKey) lastThen = null;
 }
 // Keeps the directions going when the board hasn't been heard from for a
 // moment (its Wi-Fi drops briefly while you walk): estimate how far you've
