@@ -37,4 +37,5 @@ STAIR_MIN_P = 0.8                # a stride only counts as stairs if the classif
 # --- Navigator (behavior cloning) ---------------------------------------------
 ACTIONS = ["straight", "left", "right", "stairs_up", "stairs_down", "arrived"]
 LOOKAHEAD_M = 5.0                # an instruction shows up this far before the turn / stairs
+ARRIVE_M = 3.0                   # "arrived" shows for the last 3 m before the destination
 TRACK_HZ = 5                     # rows per second in a walk's track (the policy's states)

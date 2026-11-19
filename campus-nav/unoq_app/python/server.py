@@ -68,6 +68,7 @@ class App:
                 "last_train": self.last_train,
                 "actions": S.ACTIONS,
                 "lookahead_m": S.LOOKAHEAD_M,
+                "arrive_m": S.ARRIVE_M,
             }
             if self.live is not None:
                 out["live"] = self.live.state()

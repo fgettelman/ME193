@@ -194,6 +194,7 @@ canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-ac
       <svg viewBox="0 0 100 100" id="arrow"></svg>
       <div class="txt" id="n-txt">Straight</div>
       <div class="sub" id="n-sub"></div>
+      <div class="sub" id="n-next" style="font-weight:700;margin-top:6px"></div>
     </div>
     <div class="bar"><i id="n-prog"></i></div>
     <p class="mute" id="n-stats" style="text-align:center"></p>
@@ -244,6 +245,7 @@ canvas{width:100%;display:block;background:var(--bg);border-radius:10px;touch-ac
       Your fixes also teach the stairs classifier next time you train stairs.</p>
     <h2 style="margin-top:12px">Events</h2>
     <div id="evlist"></div>
+    <div id="rv-issues"></div>
     <p class="mute" id="rv-taps"></p>
     <div class="grid2"><button class="b p" id="rv-save">Save review</button>
       <button class="b danger" id="rv-del">Delete walk</button></div>
@@ -360,7 +362,7 @@ async function poll(){
 async function pollOnce(){
   const live = S && S.live && S.live.mode !== "idle";
   const full = !S || !live || Date.now() - lastFull > 5000;
-  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 3000);
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), full ? 3000 : 1500);
   try {
     const j = await (await fetch(full ? "/api/state" : "/api/live", {signal: ctl.signal, cache: "no-store"})).json();
     if (full) { S = j; lastFull = Date.now(); } else { S.live = j.live; S.training = j.training; }
@@ -447,14 +449,38 @@ function renderGuide(L){
     $("#n-sub").textContent = L.message; return;
   }
   const a = L.instruction || "straight";
-  $("#instr").style.background = COLOR(a); $("#arrow").innerHTML = ARROWS[a]; $("#n-txt").textContent = NAMES[a];
+  // Remember where the board says you are, so the phone can keep going on
+  // its own if the Wi-Fi drops (see guideTick).
+  G = {d: L.d ?? r.d ?? 0, speed: L.speed || 0, plan: L.plan || [], at: Date.now(), instr: a, routeLen: L.route_len};
   const conf = L.probs ? Math.round(100*(L.probs[a]||0)) : null;
-  $("#n-sub").textContent = (a === "left" || a === "right" || a.startsWith("stairs")) ? `coming up within ~${S.lookahead_m} m${conf!=null?` · ${conf}% sure`:""}` : (conf!=null?`${conf}% sure`:"");
-  if (a !== lastInstr) { if (lastInstr !== null) { say(NAMES[a]); navigator.vibrate && navigator.vibrate(a==="straight"?60:[120,80,120]); } lastInstr = a; }
+  showInstr(a, (a === "left" || a === "right" || a.startsWith("stairs")) ? `coming up within ~${S.lookahead_m} m${conf!=null?` · ${conf}% sure`:""}` : (conf!=null?`${conf}% sure`:""), 0);
   $("#n-prog").style.width = L.progress != null ? (100*L.progress).toFixed(0)+"%" : "0";
   $("#n-stats").textContent = `${fmt(r.d)} m · heading ${fmt(r.h)}° · ${r.turns||0} turns · ${r.on||"flat"}`;
   $("#n-corr").textContent = `${L.n_taps} correction${L.n_taps===1?"":"s"}`;
 }
+// Show an instruction (and speak / buzz when it changes). `ahead` = metres
+// walked since the board's last update (used to say what's next).
+function showInstr(a, sub, ahead){
+  $("#instr").style.background = COLOR(a); $("#arrow").innerHTML = ARROWS[a]; $("#n-txt").textContent = NAMES[a];
+  $("#n-sub").textContent = sub;
+  const next = G && G.plan.find(p => p.in_m > ahead + 0.5 && p.do !== a);
+  $("#n-next").textContent = next ? `Then: ${NAMES[next.do].toLowerCase()} in ~${Math.max(1, Math.round(next.in_m - ahead))} m` : "";
+  if (a !== lastInstr) { if (lastInstr !== null) { say(NAMES[a]); navigator.vibrate && navigator.vibrate(a==="straight"?60:[120,80,120]); } lastInstr = a; }
+}
+// Keeps the directions going when the board hasn't been heard from for a
+// moment (its Wi-Fi drops briefly while you walk): estimate how far you've
+// walked since (speed x time) and follow the board's plan of what's coming.
+let G = null;
+setInterval(function guideTick(){
+  if (tab !== "guide" || !G || !S || !S.live || S.live.mode !== "nav" || S.live.phase !== "go") return;
+  const gap = (Date.now() - G.at) / 1000;
+  if (gap < 1.2) return;                                   // board is up to date
+  if (gap > 30) { $("#n-sub").textContent = "Lost the board for over 30 s: stop and wait for it to reconnect."; return; }
+  const ahead = Math.min(G.speed * gap, 25);
+  let a = G.instr;
+  for (const p of G.plan) if (p.in_m > 0.5 && p.in_m <= ahead) a = p.do;   // last planned change we've walked past
+  showInstr(a, `estimating (board reconnecting, ${Math.round(gap)} s) · ~${Math.round(ahead)} m since`, ahead);
+}, 250);
 $("#n-route").onchange = render;
 $("#n-go").onclick = async () => {
   const key = $("#n-route").value, info = S.routes.find(r => r.key === key) || {};
@@ -496,9 +522,11 @@ function labelTrack(rows, events, look){
   const dAt = t => { if (t <= ts[0]) return ds[0]; for (let i=1;i<ts.length;i++) if (ts[i] >= t) { const f=(t-ts[i-1])/((ts[i]-ts[i-1])||1); return ds[i-1]+f*(ds[i]-ds[i-1]); } return ds[ds.length-1]; };
   const evs = events.slice().sort((a,b)=>a.t-b.t);
   const arr = evs.find(e => e.type==="arrived"); const arrive = arr ? arr.t : null;
+  const dArr = arrive != null ? dAt(arrive) : null, arriveM = (S && S.arrive_m) || 3;
   const spans = evs.filter(e => e.type!=="arrived" && e.type!=="straight").map(e => [dAt(e.t)-look, e.t, e.t_end ?? e.t, e.type]);
   return rows.map(r => {
-    if (arrive!=null && r.t >= arrive) return r.t <= arrive+4 ? "arrived" : null;
+    if (arrive!=null && r.t > arrive+4) return null;
+    if (arrive!=null && (r.t >= arrive || r.d >= dArr - arriveM)) return "arrived";   // last 3 m = arrived
     for (const [d0,te,tend,typ] of spans) if (r.t <= tend && (r.d >= d0 || r.t >= te-1)) return typ;
     return "straight";
   });
@@ -549,9 +577,13 @@ function drawReview(){
     <div class="top1"><b>${i+1}.</b><select data-k="type">${EV_TYPES.map(([a,n])=>`<option value="${a}" ${a===e.type?"selected":""}>${n}</option>`).join("")}</select>
       <button class="b danger" data-k="x" aria-label="delete">✕</button></div>
     <div class="times"><span class="mute">${span?"from":"at"} ${fmt(e.t-R.t0,1)}s</span><button class="b" data-k="m">−1s</button><button class="b" data-k="p">+1s</button>
-      ${span ? `<span class="gap"></span><span class="mute">to ${fmt(e.t_end-R.t0,1)}s</span><button class="b" data-k="em">−1s</button><button class="b" data-k="ep">+1s</button>` : ""}
-      ${e.auto?'<span class="mute">· detected</span>':e.from?`<span class="mute">· ${esc(e.from)}</span>`:""}</div></div>`; }).join("")
+      <button class="b" data-k="sh">${span?"start":"move"} ← cursor</button></div>
+    ${span ? `<div class="times"><span class="mute">to ${fmt(e.t_end-R.t0,1)}s</span><button class="b" data-k="em">−1s</button><button class="b" data-k="ep">+1s</button>
+      <button class="b" data-k="eh">end ← cursor</button></div>` : ""}
+    <div class="times mute">${e.auto?"detected":e.from?esc(e.from):""}${span ? ` · ${fmt(e.t_end-e.t,1)} s long` : ""}</div></div>`; }).join("")
     || '<p class="mute">No events: every moment is labelled "straight".</p>';
+  const issues = reviewIssues();
+  $("#rv-issues").innerHTML = issues.length ? `<div class="tip" style="border-left-color:var(--warn)"><b>Check before saving:</b><ul style="margin:4px 0 0;padding-left:18px">${issues.map(s => `<li>${s}</li>`).join("")}</ul></div>` : (R.events.length ? '<p class="mute">✓ No problems found.</p>' : "");
   $$("#evlist .ev").forEach(div => { const i = +div.dataset.i, e = R.events[i];
     div.querySelector("[data-k=type]").onchange = ev => { e.type = ev.target.value;
       if (isSpan(e.type)) { if (e.t_end==null) e.t_end = e.t+6; } else delete e.t_end;
@@ -559,26 +591,68 @@ function drawReview(){
     div.querySelector("[data-k=m]").onclick = () => shift(i,-1);
     div.querySelector("[data-k=p]").onclick = () => shift(i, 1);
     const em = div.querySelector("[data-k=em]"), ep = div.querySelector("[data-k=ep]");
-    if (em) em.onclick = () => { e.t_end = Math.max(e.t+0.5, e.t_end-1); drawReview(); };
-    if (ep) ep.onclick = () => { e.t_end += 1; drawReview(); };
+    if (em) em.onclick = () => { e.t_end = Math.max(e.t+0.5, e.t_end-1); e.end_set = true; drawReview(); };
+    if (ep) ep.onclick = () => { e.t_end += 1; e.end_set = true; drawReview(); };
+    // Snap the start / end to wherever you last tapped the map or timeline.
+    div.querySelector("[data-k=sh]").onclick = () => { if (cursor == null) return toast("Tap the map or timeline first");
+      if (e.t_end != null) { if (cursor >= e.t_end) return toast("That's after the end: set the end first"); }
+      e.t = cursor; delete e.auto; e.from = "review"; R.events.sort((a,b)=>a.t-b.t); drawReview(); };
+    const eh = div.querySelector("[data-k=eh]");
+    if (eh) eh.onclick = () => { if (cursor == null) return toast("Tap the map or timeline first");
+      if (cursor <= e.t) return toast("That's before the start");
+      e.t_end = cursor; e.end_set = true; delete e.auto; e.from = "review"; drawReview(); };
     div.querySelector("[data-k=x]").onclick = () => { R.events.splice(i,1); drawReview(); };
   });
 }
 const EV_TYPES = [["left","Turn left"],["right","Turn right"],["stairs_up","Stairs up"],["stairs_down","Stairs down"],["straight","Flat walking (not stairs / no turn)"],["arrived","Arrived"]];
 const isSpan = t => t === "stairs_up" || t === "stairs_down" || t === "straight";
+// Problems that make the labels disagree between walks (and hurt accuracy).
+function reviewIssues(){
+  const out = [], ev = R.events, n = e => ev.indexOf(e) + 1, s = t => fmt(t - R.t0, 1) + "s";
+  const arr = ev.find(e => e.type === "arrived");
+  if (!arr) out.push("No <b>Arrived</b> yet: tap where you reached the door, then + Arrived.");
+  if (ev.filter(e => e.type === "arrived").length > 1) out.push("More than one Arrived.");
+  const spans = ev.filter(e => isSpan(e.type) && e.t_end != null);
+  for (const e of spans) {
+    const len = e.t_end - e.t, name = `${n(e)}. ${EV_TYPES.find(x => x[0] === e.type)[1].split(" (")[0]}`;
+    if (!e.auto && !e.end_set && Math.abs(len - 6) < 0.05) out.push(`${name} is still the default 6 s: set its end (tap where it really ended, then "end ← cursor").`);
+    if (e.type !== "straight" && len > 20) out.push(`${name} is ${fmt(len)} s long: stairs rarely take that long. Check its end.`);
+    if (arr && e.t >= arr.t) out.push(`${name} starts after Arrived (${s(arr.t)}).`);
+    else if (arr && e.type !== "straight" && e.t_end > arr.t + 0.5) out.push(`${name} runs past Arrived. If the destination is at the top/bottom of these stairs, move Arrived to where the stairs end.`);
+  }
+  for (let i = 0; i < spans.length; i++) for (let j = i + 1; j < spans.length; j++) {
+    const a = spans[i], b = spans[j];
+    if (a.t < b.t_end && b.t < a.t_end) out.push(`${n(a)} and ${n(b)} overlap (${s(Math.max(a.t, b.t))} to ${s(Math.min(a.t_end, b.t_end))}): ${a.type === b.type ? "merge them into one" : "fix where one ends and the other starts"}.`);
+  }
+  return out;
+}
+// Where the stairs classifier saw this kind of stairs around time t (a good default span).
+function detectedRun(t, kind){
+  const rows = R.rows; let i = rows.findIndex(r => r.t >= t); if (i < 0) return null;
+  if (rows[i].on !== kind) return null;
+  let a = i, b = i; while (a > 0 && rows[a-1].on === kind) a--; while (b < rows.length-1 && rows[b+1].on === kind) b++;
+  return [rows[a].t, rows[b].t];
+}
 function shift(i, s){ const e = R.events[i]; e.t += s; if (e.t_end!=null) e.t_end += s; R.events.sort((a,b)=>a.t-b.t); drawReview(); }
 $("#map").onclick = ev => { if (!R || !mapT) return; const b = ev.target.getBoundingClientRect(), x = ev.clientX-b.left, y = ev.clientY-b.top;
   let best = 0, bd = 1e9; R.rows.forEach((r,i)=>{ const [px,py] = mapT([-r.y,-r.x]); const d=(px-x)**2+(py-y)**2; if (d<bd){bd=d;best=i;} }); cursor = R.rows[best].t; drawReview(); };
 $("#tl").onclick = ev => { if (!R || !tlT) return; const b = ev.target.getBoundingClientRect(); cursor = tlT.T(ev.clientX-b.left); drawReview(); };
 $$("[data-add]").forEach(b => b.onclick = () => { if (!R) return; if (cursor==null) return toast("Tap the map or timeline first");
   const typ = b.dataset.add; if (typ==="arrived") R.events = R.events.filter(e=>e.type!=="arrived");
-  const e = {t: cursor, type: typ, from: "review"}; if (isSpan(typ)) e.t_end = cursor + 6;
+  const e = {t: cursor, type: typ, from: "review"};
+  if (isSpan(typ)) {   // start from what the stairs classifier saw here, if anything
+    const run = typ !== "straight" ? detectedRun(cursor, typ.slice(7)) : null;
+    if (run) { e.t = run[0]; e.t_end = run[1]; e.end_set = true; toast("Set to where stairs were detected: adjust if needed"); }
+    else { e.t_end = cursor + 6; toast("Now tap where it ends, then \"end ← cursor\""); }
+  }
   R.events.push(e); R.events.sort((a,b)=>a.t-b.t); drawReview(); });
 $("#rv-reset").onclick = async () => { if (!R) return;
   const j = await (await fetch("/api/walk?suggest=1&id="+encodeURIComponent(sel))).json();
   R.events = j.events; toast("Back to the auto-detected events (not saved yet)"); drawReview(); };
 $("#rv-save").onclick = async () => { if (!R) return;
   if (!R.events.some(e=>e.type==="arrived")) return toast("Add where you arrived first");
+  const issues = reviewIssues();
+  if (issues.length && !confirm(`${issues.length} thing${issues.length>1?"s":""} to check (listed under Events). Inconsistent labels make the navigator less accurate. Save anyway?`)) return;
   const j = await api("/api/labels", {id: sel, events: R.events, use: $("#rv-use").checked});
   if (j.ok) { toast("Saved ✓"); await new Promise(r => setTimeout(r, 300)); S = await (await fetch("/api/state")).json();
     const next = S.walks.find(w => !w.reviewed); if (next) openWalk(next.id); else if (mode === "train") { openStep = null; show("steps"); } } };
@@ -726,7 +800,8 @@ function stepsList(L){
     {id:"review", title:"Review every walk", done: walks.length > 0 && unreviewed.length === 0,
      body: `<ol><li>Open the walk. The map shows the path; each numbered dot is an event.</li>
        <li>Every <b>turn</b> should match a real turn: ✕ delete fake ones; to add a missed one, tap the map where it happened, then <b>+ Left</b>/<b>+ Right</b>.</li>
-       <li><b>Stairs</b> should cover the stairs exactly: adjust "from" and "to". Stairs where you were on the flat? Change it to <b>Flat walking</b>.</li>
+       <li><b>Stairs</b> should cover the stairs exactly: tap the map where they start, <b>start ← cursor</b>; where they end, <b>end ← cursor</b>. Stairs where you were on the flat? Change it to <b>Flat walking</b>.</li>
+       <li><b>Label every walk the same way</b> (same turns, same stairs, Arrived at the same door). Fix anything listed under "Check before saving".</li>
        <li><b>Arrived</b> should be at the door. Then <b>Save review</b>.</li></ol>
        ${unreviewed.length ? `<p><b>${unreviewed.length} to review:</b></p><div class="btnrow">${unreviewed.map(w => `<button class="b" data-review="${esc(w.id)}">${esc(w.person)} · ${w.kind} · ${fmt(w.length_m)} m</button>`).join("")}</div>` : `<p class="mute">${walks.length ? "All reviewed ✓" : "No walks yet."}</p>`}
        <div class="tip">A walk that went wrong (got lost, sensor slipped)? Untick "use for training" so it doesn't use one of your 10.</div>`},

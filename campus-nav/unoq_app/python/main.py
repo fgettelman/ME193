@@ -163,6 +163,14 @@ class Live:
                 s["instruction"] = g.shown
                 s["probs"] = {a: round(p, 2) for a, p in g.probs.items()}
                 s["progress"] = (min(1.0, tr.d / g.route_len) if g.route_len else None)
+                # For the phone to keep guiding through Wi-Fi drops: what's
+                # coming (metres ahead -> instruction), and how fast you walk.
+                s["plan"] = g.plan
+                s["route_len"] = g.route_len
+            if self.mode in ("demo", "nav") and self.phase == "go":
+                s["d"] = round(tr.d, 2)
+                s["speed"] = round(tr.counter.cadence(self.t) / 60.0 * tr.step_len, 2)
+                s["board_t"] = round(self.t, 2)
             return s
 
     # --- called from the main loop ------------------------------------------
@@ -208,8 +216,8 @@ class Live:
 
 store = st.Store(DATA)
 live = Live(store)
-# The board is slow for the full weight search; a small one is plenty.
-app = server.App(store, live, train_search="small")
+# Full weight search: ~3x slower than a laptop, still only seconds with 10 walks.
+app = server.App(store, live, train_search="full")
 try:
     server.serve(app)
     print(f"Phone page on port {S.WEB_PORT}")
@@ -236,8 +244,16 @@ def loop():
         samples = read_samples()
     except Exception as e:
         print(f"bridge error: {e}")
+        # The microcontroller isn't answering (seen after re-flashing the
+        # sketch): say so on the page, so it doesn't just look frozen.
+        counter["bridge_fails"] = counter.get("bridge_fails", 0) + 1
+        if counter["bridge_fails"] >= 2:
+            live.sensor_ok, live.rate = False, 0
+            live.message = ("The board's microcontroller isn't answering. Unplug the board's "
+                            "power for 10 s and plug it back in.")
         time.sleep(1.0)
         return
+    counter["bridge_fails"] = 0
     # An accelerometer reading exactly 0 g is impossible (gravity): it means the
     # MPU-6050 is asleep after a power blip. Don't feed those to the heading.
     good = [s for s in samples if any(s[1][:3])]

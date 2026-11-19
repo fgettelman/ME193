@@ -342,7 +342,7 @@ class Store:
         if not data:
             return {"ok": False, "error": "no reviewed walks yet: walk a route, then Review it"}
         result = cross_validate(data, search)
-        policy = navcore.Policy.build([(k, X, y) for k, X, y, _ in data], result["weights"])
+        policy = navcore.Policy.build([(k, X, y, w) for k, X, y, w in data], result["weights"])
         policy.d.update({"trained_on": [w for *_, w in data], "trained": time.time(),
                          "lowo": result})
         _write(os.path.join(self.root, "models", "policy.json"), policy.d)
